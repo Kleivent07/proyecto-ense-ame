@@ -1,21 +1,30 @@
 // ignore_for_file: unreachable_switch_default
-
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+//inicio
+import 'package:my_app/src/pages/splash_page.dart';
+//login/registro
+import 'package:my_app/src/pages/login/registro_page.dart';
+import 'package:my_app/src/pages/login/login_page.dart';
+
+//home
 import 'package:my_app/src/pages/home_es_page.dart';
 import 'package:my_app/src/pages/home_pro_page.dart';
-import 'package:my_app/src/pages/login_registro.dart';
-import 'package:my_app/src/pages/perfil_page.dart';
-import 'package:my_app/src/pages/splash_page.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:my_app/src/pages/registro_page.dart';
+
+import 'package:my_app/src/pages/chatPage.dart';
+
+
+
+
 
 enum CustomPages {
   splashPage,
   homeEsPage,
-  homeProPage, // <-- Agrega esto
+  homeProPage,
   perfilPage,
   registroPage,
-  loginPage, // <-- Agrega esta línea
+  loginPage,
+  chatPage,
 }
 
 enum TypeAnimation {
@@ -36,10 +45,10 @@ navigate(BuildContext mContext, CustomPages mPage,{bool finishCurrent = false}) 
       Navigator.pushAndRemoveUntil(mContext, _goPage(const SplashPage(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
       break;
     case CustomPages.registroPage:
-      Navigator.pushAndRemoveUntil(mContext, _goPage(RegistroUsuario(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
+      Navigator.pushAndRemoveUntil(mContext, _goPage(RegistroPage(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
       break;
     case CustomPages.loginPage:
-      Navigator.pushAndRemoveUntil(mContext, _goPage(LoginRegistro(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
+      Navigator.pushAndRemoveUntil(mContext, _goPage(LoginPage(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
       break;
     case CustomPages.homeProPage:
       Navigator.push(mContext, _goPage(const HomePROPage(), TypeAnimation.transition, 500));
@@ -47,12 +56,26 @@ navigate(BuildContext mContext, CustomPages mPage,{bool finishCurrent = false}) 
     case CustomPages.homeEsPage:
       Navigator.push(mContext, _goPage(const HomeESPage(), TypeAnimation.transition, 500));
       break;
-    case CustomPages.perfilPage:
-      Navigator.push(mContext, _goPage(const PerfilPage(), TypeAnimation.transition, 500));
-      break;
+
+    case CustomPages.chatPage:
+      Navigator.push(mContext, _goPage(const ChatsPage(), TypeAnimation.transition, 500));
+      break;  
     default:
   }
 }
+class DismissKeyboard extends StatelessWidget {
+  final Widget child;
+  const DismissKeyboard({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: child,
+    );
+  }
+}
+
 
 Route _goPage(Widget page, TypeAnimation type, int milliseconds) {
   return PageRouteBuilder(

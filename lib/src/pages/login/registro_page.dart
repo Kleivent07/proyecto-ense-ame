@@ -1,16 +1,21 @@
+// ignore_for_file: unused_element_parameter
+
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/constants.dart';
 import 'package:my_app/src/custom/library.dart';
-import 'package:my_app/src/models/create_perfiles.dart';
 
-class RegistroUsuario extends StatefulWidget {
-  const RegistroUsuario({super.key});
+import 'package:my_app/src/models/usuarios_model.dart';
+
+
+
+class RegistroPage extends StatefulWidget {
+  const RegistroPage({super.key});
 
   @override
-  State<RegistroUsuario> createState() => _RegistroUsuarioState();
+  State<RegistroPage> createState() => _RegistroPageState();
 }
 
-class _RegistroUsuarioState extends State<RegistroUsuario> {
+class _RegistroPageState extends State<RegistroPage> {
   bool _aceptoTerminos = false;
   String _tipoUsuario = 'Estudiante';
   bool _mostrarContrasena = false;
@@ -20,6 +25,135 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
   final TextEditingController _correoController = TextEditingController();
   final TextEditingController _contrasenaController = TextEditingController();
   final TextEditingController _repetirContrasenaController = TextEditingController();
+  final TextEditingController _apellidoController = TextEditingController();
+  final TextEditingController _fechaController = TextEditingController();
+
+  DateTime? _fechaNacimiento; 
+
+  final Usuario usuarioService = Usuario();
+
+  @override
+  void dispose() {
+    _usuarioController.dispose();
+    _correoController.dispose();
+    _contrasenaController.dispose();
+    _repetirContrasenaController.dispose();
+    _apellidoController.dispose();
+    _fechaController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _seleccionarFecha() async {
+      final DateTime? fecha = await showDatePicker(
+        context: context,
+        initialDate: DateTime(2000, 1, 1),
+        firstDate: DateTime(1900),
+        lastDate: DateTime.now(),
+        builder: (context, child) {
+          // Cambiar colores del DatePicker
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: ColorScheme.light(
+                primary: Constants.colorAccent,
+                onPrimary: Colors.white,
+                onSurface: Constants.colorFont,
+              ),
+              textButtonTheme: TextButtonThemeData(
+                style: TextButton.styleFrom(foregroundColor: Constants.colorAccent),
+              ),
+            ),
+            child: child!,
+          );
+        },
+      );
+
+      if (fecha != null) {
+        setState(() {
+          _fechaNacimiento = fecha;
+          _fechaController.text =
+              "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}";
+        });
+      }
+    }
+
+  Future<void> _registrar() async {
+    // Validaciones básicas
+    if (!_aceptoTerminos) {
+      _snack('Debes aceptar los términos y condiciones');
+      return;
+    }
+    if (_usuarioController.text.isEmpty ||
+        _correoController.text.isEmpty ||
+        _contrasenaController.text.isEmpty ||
+        _repetirContrasenaController.text.isEmpty ||
+        _apellidoController.text.isEmpty ||
+        _fechaController.text.isEmpty) {
+      _snack('Completa todos los campos y selecciona tu fecha de nacimiento');
+      return;
+    }
+    if (!_correoController.text.endsWith('@uandresbello.edu')) {
+      _snack('El correo debe terminar en @uandresbello.edu');
+      return;
+    }
+    if (_contrasenaController.text.length < 8) {
+      _snack('La contraseña debe tener al menos 8 caracteres');
+      return;
+    }
+    if (_contrasenaController.text != _repetirContrasenaController.text) {
+      _snack('Las contraseñas no coinciden');
+      return;
+    }
+  
+
+  try {
+    final claseFormateada = _tipoUsuario[0].toUpperCase() + _tipoUsuario.substring(1).toLowerCase();
+    // Llamada al servicio
+    final result = await usuarioService.registrarUsuario(
+      email: _correoController.text.trim(),
+      password: _contrasenaController.text.trim(),
+      nombre: _usuarioController.text.trim(),
+      apellido: _apellidoController.text.trim(),
+      clase: claseFormateada,
+      fechaNacimiento: _fechaNacimiento!,
+    );
+    if (claseFormateada != 'Estudiante' && claseFormateada != 'Tutor') {
+      _snack('Tipo de usuario inválido');
+      return;
+    }
+
+    if (result['ok'] == true) {
+      _snack(result['message'] ?? 'Registro exitoso');
+      navigate(context, CustomPages.loginPage);
+
+    } else {
+      // Traducimos posibles mensajes de error de Supabase
+      String mensaje = result['message'] ?? 'Error al registrar usuario';
+      if (mensaje.contains('User already registered')) {
+        mensaje = 'El usuario ya está registrado';
+      } else if (mensaje.contains('Invalid email')) {
+        mensaje = 'El correo electrónico no es válido';
+      } else if (mensaje.contains('Weak password')) {
+        mensaje = 'La contraseña es demasiado débil';
+      }
+      _snack(mensaje);
+    }
+  } catch (e) {
+    String error = e.toString();
+    if (error.contains('User already registered')) {
+      _snack('El usuario ya está registrado');
+    } else if (error.contains('Invalid email')) {
+      _snack('Correo electrónico no válido');
+    } else {
+      _snack('Ocurrió un error inesperado: $error');
+    }
+  }
+}
+
+
+  void _snack(String mensaje) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(mensaje)));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +174,6 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  // Título y botón atrás
                   Align(
                     alignment: Alignment.topLeft,
                     child: IconButton(
@@ -54,7 +187,39 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
                   ),
                   const SizedBox(height: 40),
                   // Campos
-                  _textoFieldStyle(label: 'Nombre de usuario', controller: _usuarioController),
+                  _textoFieldStyle(
+                    label: 'Nombre de usuario',
+                    controller: _usuarioController,
+                    icon: Icons.person,
+                  ),
+                  const SizedBox(height: 10),
+                  _textoFieldStyle(
+                    label: 'Apellido',
+                    controller: _apellidoController,
+                    icon: Icons.person,
+                    fondoColor: Constants.colorBackground,
+                    textoColor: Constants.colorFont,
+                    textoTamanio: 18,
+                  ),
+                  const SizedBox(height: 10),
+                  TextFormField(
+                    controller: _fechaController,
+                    decoration: InputDecoration(
+                      labelText: 'Fecha de nacimiento',
+                      prefixIcon: Icon(Icons.calendar_today),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      filled: true,
+                      fillColor: Colors.white,
+                    ),
+                    readOnly: true,
+                    onTap: _seleccionarFecha, // 🔹 aquí usas la función
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Selecciona tu fecha de nacimiento';
+                      }
+                      return null;
+                    },
+                  ),
                   const SizedBox(height: 10),
                   _textoFieldStyle(
                     label: 'Correo electrónico (@uandresbello.edu)',
@@ -70,7 +235,8 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
                     controller: _contrasenaController,
                     isPassword: true,
                     mostrarPassword: _mostrarContrasena,
-                    onVerPassword: () => setState(() => _mostrarContrasena = !_mostrarContrasena),
+                    onVerPassword: () =>
+                        setState(() => _mostrarContrasena = !_mostrarContrasena),
                   ),
                   const SizedBox(height: 10),
                   _textoFieldStyle(
@@ -78,8 +244,8 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
                     controller: _repetirContrasenaController,
                     isPassword: true,
                     mostrarPassword: _mostrarRepetirContrasena,
-                    onVerPassword: () =>
-                        setState(() => _mostrarRepetirContrasena = !_mostrarRepetirContrasena),
+                    onVerPassword: () => setState(
+                        () => _mostrarRepetirContrasena = !_mostrarRepetirContrasena),
                   ),
                   const SizedBox(height: 10),
                   // Tipo de usuario
@@ -93,7 +259,8 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
                           child: DropdownButtonFormField<String>(
                             value: _tipoUsuario,
                             decoration: InputDecoration(
-                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                              contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 0),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
                                 borderSide: BorderSide(color: Constants.colorFont),
@@ -101,13 +268,16 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
                               filled: true,
                               fillColor: Constants.colorBackground,
                             ),
-                            items: <String>['Estudiante', 'Tutor (profesor)']
+                            items: <String>['Estudiante', 'Tutor']
                                 .map((value) => DropdownMenuItem<String>(
                                       value: value,
-                                      child: Text(value, style: TextStyle(color: Constants.colorFont)),
+                                      child: Text(value,
+                                          style:
+                                              TextStyle(color: Constants.colorFont)),
                                     ))
                                 .toList(),
-                            onChanged: (newValue) => setState(() => _tipoUsuario = newValue!),
+                            onChanged: (newValue) =>
+                                setState(() => _tipoUsuario = newValue!),
                             dropdownColor: Constants.colorShadow,
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -121,12 +291,14 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
                     children: [
                       Checkbox(
                         value: _aceptoTerminos,
-                        onChanged: (value) => setState(() => _aceptoTerminos = value ?? false),
+                        onChanged: (value) =>
+                            setState(() => _aceptoTerminos = value ?? false),
                         activeColor: Constants.colorAccent,
                       ),
                       const SizedBox(width: 5),
                       Expanded(
-                        child: Text('Acepto términos y condiciones', style: Constants.textStyleBLANCO),
+                        child: Text('Acepto términos y condiciones',
+                            style: Constants.textStyleBLANCO),
                       ),
                     ],
                   ),
@@ -135,15 +307,17 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _registrarUsuario,
+                      onPressed: _registrar,
                       style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 60, vertical: 15),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 60, vertical: 15),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
                         backgroundColor: Constants.colorAccent,
                       ),
-                      child: Text('Registrarse', style: Constants.textStyleBLANCOJumbo),
+                      child:
+                          Text('Registrarse', style: Constants.textStyleBLANCOJumbo),
                     ),
                   ),
                 ],
@@ -155,58 +329,6 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
     );
   }
 
-  // Función de registro
-  Future<void> _registrarUsuario() async {
-    // Validaciones
-    if (!_aceptoTerminos) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Debes aceptar los términos y condiciones')));
-      return;
-    }
-    if (_usuarioController.text.isEmpty ||
-        _correoController.text.isEmpty ||
-        _contrasenaController.text.isEmpty ||
-        _repetirContrasenaController.text.isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Completa todos los campos')));
-      return;
-    }
-    if (!_correoController.text.endsWith('@uandresbello.edu')) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('El correo debe ser @uandresbello.edu')));
-      return;
-    }
-    if (_contrasenaController.text.length < 8) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('La contraseña debe tener al menos 8 caracteres')),
-      );
-      return;
-    }
-    if (_contrasenaController.text != _repetirContrasenaController.text) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Las contraseñas no coinciden')));
-      return;
-    }
-
-    // Crear perfil
-    bool registrado = await PerfilRepository.createPerfil(
-      email: _correoController.text.trim(),
-      password: _contrasenaController.text,
-      nombre: _usuarioController.text.trim(),
-      clase: _tipoUsuario,
-    );
-
-    if (registrado) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Usuario registrado con éxito')));
-      navigate(context, CustomPages.loginPage);
-    } else {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Error al registrar usuario')));
-    }
-  }
-
-  // Widget de campos
   Widget _textoFieldStyle({
     required String label,
     required TextEditingController controller,
@@ -217,6 +339,8 @@ class _RegistroUsuarioState extends State<RegistroUsuario> {
     Color fondoColor = Colors.white,
     Color textoColor = Colors.black,
     double textoTamanio = 16,
+    bool readOnly = false,
+    VoidCallback? onTap, 
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),

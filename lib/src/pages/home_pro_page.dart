@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/CustomBottomNavBar.dart';
+import 'package:my_app/src/pages/notificaciones.dart';
 
 
 class HomePROPage extends StatefulWidget {
@@ -17,22 +18,34 @@ class _HomePROPageState extends State<HomePROPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: TextField(
-          decoration: InputDecoration(
-            hintText: 'Buscar...',
-            prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(30),
-              borderSide: BorderSide.none,
-            ),
-            filled: true,
-            fillColor: Colors.white,
-            contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+      title: TextField(
+        decoration: InputDecoration(
+          hintText: 'Buscar...',
+          prefixIcon: Icon(Icons.search),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(30),
+            borderSide: BorderSide.none,
           ),
+          filled: true,
+          fillColor: Colors.white,
+          contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 16),
         ),
-        backgroundColor: Colors.blueGrey[900],
-        toolbarHeight: 70,
       ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.notifications, color: Colors.white),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const NotificacionesPage()),
+            );
+          },
+        ),
+      ],
+      backgroundColor: Colors.blueGrey[900],
+      toolbarHeight: 70,
+    ),
+
       body: Padding(
         padding: const EdgeInsets.all(24.0),
         child: Column(
@@ -47,7 +60,7 @@ class _HomePROPageState extends State<HomePROPage> {
           ],
         ),
       ),
-      bottomNavigationBar: CustomBottomNavBarES(selectedIndex: _selectedIndex),
+      bottomNavigationBar: CustomBottomNavBar(selectedIndex: _selectedIndex),
     );
   }
 
