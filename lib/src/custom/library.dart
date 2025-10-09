@@ -1,5 +1,6 @@
 // ignore_for_file: unreachable_switch_default
 import 'package:flutter/material.dart';
+import 'package:my_app/src/pages/perfil_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 //inicio
 import 'package:my_app/src/pages/splash_page.dart';
@@ -29,6 +30,12 @@ enum CustomPages {
 
 enum TypeAnimation {
   transition,
+  fade,
+  scale,
+  rotation,
+  slideUp,
+  slideRight,
+  slideLeft,
 }
 enum Preference {
   onboarding,
@@ -42,21 +49,29 @@ navigate(BuildContext mContext, CustomPages mPage,{bool finishCurrent = false}) 
   }
   switch (mPage) {
     case CustomPages.splashPage:
-      Navigator.pushAndRemoveUntil(mContext, _goPage(const SplashPage(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
+      Navigator.pushAndRemoveUntil(mContext, _goPage(const SplashPage(), TypeAnimation.fade, 500), (Route<dynamic> route) => false);
       break;
     case CustomPages.registroPage:
-      Navigator.pushAndRemoveUntil(mContext, _goPage(RegistroPage(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
+      Navigator.pushAndRemoveUntil(mContext, _goPage(RegistroPage(), TypeAnimation.slideLeft, 500), (Route<dynamic> route) => false);
       break;
     case CustomPages.loginPage:
-      Navigator.pushAndRemoveUntil(mContext, _goPage(LoginPage(), TypeAnimation.transition, 500), (Route<dynamic> route) => false);
+      Navigator.pushAndRemoveUntil(mContext, _goPage(LoginPage(), TypeAnimation.slideRight, 500), (Route<dynamic> route) => false);
       break;
     case CustomPages.homeProPage:
-      Navigator.push(mContext, _goPage(const HomePROPage(), TypeAnimation.transition, 500));
+      Navigator.pushReplacement(
+        mContext,
+        _goPage(const HomePROPage(), TypeAnimation.fade, 500),
+      );
       break;
     case CustomPages.homeEsPage:
-      Navigator.push(mContext, _goPage(const HomeESPage(), TypeAnimation.transition, 500));
+      Navigator.pushReplacement(
+        mContext,
+        _goPage(const HomeESPage(), TypeAnimation.fade, 500),
+      );
       break;
-
+    case CustomPages.perfilPage:
+      Navigator.push(mContext, _goPage(const PerfilPage(), TypeAnimation.transition, 500));
+      break;
     case CustomPages.chatPage:
       Navigator.push(mContext, _goPage(const ChatsPage(), TypeAnimation.transition, 500));
       break;  
@@ -88,7 +103,46 @@ Route _goPage(Widget page, TypeAnimation type, int milliseconds) {
         case TypeAnimation.transition:
           return SlideTransition(
             position: Tween<Offset>(
-              begin: const Offset(1.0, 0.0),
+              begin: const Offset(1.0, 0.0), // derecha a centro
+              end: Offset.zero,
+            ).animate(mCurvedAnimation),
+            child: child,
+          );
+        case TypeAnimation.fade:
+          return FadeTransition(
+            opacity: animation,
+            child: child,
+          );
+        case TypeAnimation.scale:
+          return ScaleTransition(
+            scale: animation,
+            child: child,
+          );
+        case TypeAnimation.rotation:
+          return RotationTransition(
+            turns: animation,
+            child: child,
+          );
+        case TypeAnimation.slideUp:
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.0, 1.0), // abajo a centro
+              end: Offset.zero,
+            ).animate(mCurvedAnimation),
+            child: child,
+          );
+        case TypeAnimation.slideRight:
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(-1.0, 0.0), // izquierda a centro
+              end: Offset.zero,
+            ).animate(mCurvedAnimation),
+            child: child,
+          );
+        case TypeAnimation.slideLeft:
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(1.0, 0.0), // derecha a centro
               end: Offset.zero,
             ).animate(mCurvedAnimation),
             child: child,

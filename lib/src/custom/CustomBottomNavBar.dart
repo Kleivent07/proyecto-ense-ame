@@ -1,15 +1,16 @@
-// ignore: file_names
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/library.dart';
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
-  final bool isEstudiante; // true = estudiante, false = profesor
+  final bool isEstudiante;
+  final VoidCallback? onReloadHome; // Nuevo parámetro
 
   const CustomBottomNavBar({
     super.key,
     required this.selectedIndex,
     required this.isEstudiante,
+    this.onReloadHome,
   });
 
   @override
@@ -27,17 +28,23 @@ class CustomBottomNavBar extends StatelessWidget {
             //navigate(context, isEstudiante ? CustomPages.documentosPage : CustomPages.documentosProPage);
             break;
           case 2:
-            navigate(
-              context,
-              isEstudiante ? CustomPages.homeEsPage : CustomPages.homeProPage,
-              finishCurrent: true,
-            );
+            if (selectedIndex == 2 && onReloadHome != null) {
+              // Si ya está en Home, recarga
+              onReloadHome!();
+            } else {
+              // Si no está en Home, navega
+              navigate(
+                context,
+                isEstudiante ? CustomPages.homeEsPage : CustomPages.homeProPage,
+                finishCurrent: true,
+              );
+            }
             break;
           case 3:
-            navigate(context, isEstudiante ? CustomPages.chatPage : CustomPages.chatProPage);
+            //navigate(context, isEstudiante ? CustomPages.chatPage : CustomPages.chatProPage);
             break;
           case 4:
-            navigate(context, isEstudiante ? CustomPages.perfilPage : CustomPages.perfilProPage);
+            navigate(context, isEstudiante ? CustomPages.perfilPage : CustomPages.perfilPage);
             break;
         }
       },
@@ -52,7 +59,3 @@ class CustomBottomNavBar extends StatelessWidget {
     );
   }
 }
-
-// Ejemplo de uso
-CustomBottomNavBar(selectedIndex: 2, isEstudiante: true); // Para estudiantes
-CustomBottomNavBar(selectedIndex: 2, isEstudiante: false); // Para profesores

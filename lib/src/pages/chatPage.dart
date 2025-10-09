@@ -122,7 +122,7 @@ class _ChatsPageState extends State<ChatsPage> {
                 );
               },
             ),
-      bottomNavigationBar: CustomBottomNavBarES(selectedIndex: _selectedIndex),
+
     );
   }
 }

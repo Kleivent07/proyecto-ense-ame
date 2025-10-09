@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/CustomBottomNavBar.dart';
+import 'package:my_app/src/custom/refrescar.dart';
 import 'package:my_app/src/pages/notificaciones.dart';
+import 'package:my_app/src/custom/refrescar.dart';
 
 
 class HomePROPage extends StatefulWidget {
@@ -12,7 +14,7 @@ class HomePROPage extends StatefulWidget {
 
 class _HomePROPageState extends State<HomePROPage> {
   // ignore: prefer_final_fields
-  int _selectedIndex = 2; // Home es el índice 2
+  int selectedIndex = 2; // Home es el índice 2
 
   @override
   Widget build(BuildContext context) {
@@ -48,19 +50,47 @@ class _HomePROPageState extends State<HomePROPage> {
 
       body: Padding(
         padding: const EdgeInsets.all(24.0),
-        child: Column(
-          children: [
-            // Widgets tipo botón
-            _buildFeatureButton(Icons.group, 'Reuniones', () {}),
-            SizedBox(height: 20),
-            _buildFeatureButton(Icons.description, 'Documentos', () {}),
-            SizedBox(height: 20),
-            _buildFeatureButton(Icons.school, 'Clases', () {}),
-            // Puedes agregar más aquí
-          ],
+        child: RefreshIndicator(
+          onRefresh: () async {
+            await RefrescarHelper.actualizarDatos(
+              context: context,
+              onUpdate: () {
+                setState(() {
+                  // Aquí actualizas los datos del Home
+                });
+              },
+            );
+          },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Column(
+              children: [
+                // Widgets tipo botón
+                _buildFeatureButton(Icons.group, 'Reuniones', () {}),
+                SizedBox(height: 20),
+                _buildFeatureButton(Icons.description, 'Documentos', () {}),
+                SizedBox(height: 20),
+                _buildFeatureButton(Icons.school, 'Clases', () {}),
+                // Puedes agregar más aquí
+              ],
+            ),
+          ),
         ),
       ),
-      bottomNavigationBar: CustomBottomNavBar(selectedIndex: _selectedIndex),
+      bottomNavigationBar: CustomBottomNavBar(
+        selectedIndex: selectedIndex,
+        isEstudiante: false,
+        onReloadHome: () {
+          RefrescarHelper.actualizarDatos(
+            context: context,
+            onUpdate: () {
+              setState(() {
+                // Aquí actualizas los datos del Home
+              });
+            },
+          );
+        },
+      ),
     );
   }
 

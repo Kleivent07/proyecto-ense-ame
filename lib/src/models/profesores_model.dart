@@ -1,3 +1,4 @@
+// ignore_for_file: unnecessary_null_comparison, unnecessary_type_check
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfesorService {
