@@ -10,7 +10,7 @@ class ProfesorService {
         'id': userId,
         'especialidad': 'Sin definir',
         'carrera_profesion': 'Ninguna',
-        'disponibilidad': 'Por definir',
+        'horario': 'Por definir',
       }).select();
 
       if (insertResult == null || (insertResult is List && insertResult.isEmpty)) {
@@ -45,14 +45,14 @@ class ProfesorService {
     String? especialidad,
     String? carreraProfesion,
     String? experiencia,
-    String? disponibilidad,
+    String? horario,
   }) async {
     try {
       final updateResult = await supabase.from('profesores').update({
         if (especialidad != null) 'especialidad': especialidad,
         if (carreraProfesion != null) 'carrera_profesion': carreraProfesion,
         if (experiencia != null) 'experiencia': experiencia,
-        if (disponibilidad != null) 'disponibilidad': disponibilidad,
+        if (horario != null) 'horario': horario,
       }).eq('id', userId).select();
 
       if (updateResult == null || (updateResult is List && updateResult.isEmpty)) {
@@ -78,5 +78,33 @@ class ProfesorService {
       return false;
     }
   }
-  
+Future<List<Map<String, dynamic>>> obtenerTodosTutores({String busqueda = ''}) async {
+  try {
+    var query = supabase.from('profesores').select('*, usuarios(*)');
+
+    // Filtrar manualmente después de traer los datos
+    final data = await query.order('created_at', ascending: false);
+
+    // Convierte a lista de Map
+    final listaProfesores = List<Map<String, dynamic>>.from(data as List);
+
+    if (busqueda.isEmpty) return listaProfesores;
+
+    final b = busqueda.toLowerCase();
+    final filtrados = listaProfesores.where((prof) {
+      final usuario = prof['usuarios'] ?? {};
+      final nombre = (usuario['nombre'] ?? '').toString().toLowerCase();
+      final apellido = (usuario['apellido'] ?? '').toString().toLowerCase();
+      final especialidad = (prof['especialidad'] ?? '').toString().toLowerCase();
+
+      return nombre.contains(b) || apellido.contains(b) || especialidad.contains(b);
+    }).toList();
+
+    print('Profesores filtrados: $filtrados');
+    return filtrados;
+  } catch (e) {
+    print('Error obteniendo tutores: $e');
+    return [];
+  }
+} 
 }

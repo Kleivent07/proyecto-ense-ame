@@ -1,0 +1,23 @@
+const List<String> materias = [
+  "Introducción a la Ingeniería",
+  "Introducción a la Programación",
+  "Cálculo Diferencial e Integral",
+  "Física General y Experimental",
+  "Mecánica",
+  "Base de Datos",
+  "Programación Avanzada",
+  "Diseño de Algoritmos",
+  "Algoritmos y Estructura de Datos",
+  "Minería de Datos",
+  "Ciberseguridad",
+  "Ingeniería de Software",
+  "Infraestructura TI",
+  "Conectividad y Soluciones Móviles",
+  "Taller de Desarrollo Web y Móvil",
+  "Gestión de la Transformación Digital",
+  "Tecnologías Disruptivas",
+  "Disrupción Empresarial",
+  "Compliance & Accountability",
+  "Seminario de Licenciatura",
+  "Proyecto de Título"
+];

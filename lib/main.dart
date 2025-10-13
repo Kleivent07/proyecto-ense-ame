@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/configuration.dart';
-import 'package:my_app/src/custom/constants.dart';
+import 'package:my_app/src/util/constants.dart';
 import 'package:my_app/src/pages/splash_page.dart';
 import 'package:my_app/src/providers/global_provider.dart';
 import 'package:provider/provider.dart';

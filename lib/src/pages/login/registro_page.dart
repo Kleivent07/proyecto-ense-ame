@@ -1,9 +1,8 @@
 // ignore_for_file: unused_element_parameter
 
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/constants.dart';
+import 'package:my_app/src/util/constants.dart';
 import 'package:my_app/src/custom/library.dart';
-
 import 'package:my_app/src/models/usuarios_model.dart';
 
 
@@ -156,6 +155,7 @@ class _RegistroPageState extends State<RegistroPage> {
   }
 
   @override
+
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Constants.colorPrimaryDark,

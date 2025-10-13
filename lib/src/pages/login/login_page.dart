@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/constants.dart';
+import 'package:my_app/src/util/constants.dart';
 import 'package:my_app/src/custom/library.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';

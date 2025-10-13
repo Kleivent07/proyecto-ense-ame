@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:my_app/src/custom/library.dart';
 
 class Constants {
+static const bucketAvatar = 'imagenes_usuarios';
 //colors
 static Color colorAccent = HexColor.fromHex("#991f34");
 static Color colorPrimary = HexColor.fromHex("#b60927");
@@ -21,6 +22,8 @@ static Color colorShadow = HexColor.fromHex("#d7c8ca");
 static Color colorRosaDark = HexColor.fromHex("#870939");
 static Color colorRosaLight = HexColor.fromHex("#f48fb1");
 static Color colorRosa = HexColor.fromHex("#ae104b");
+static Color colorFondo2 = HexColor.fromHex("#dedede");
+
 
 
 // font sizes

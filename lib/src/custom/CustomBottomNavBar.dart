@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/library.dart';
+import 'package:my_app/src/util/constants.dart';
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -16,9 +17,10 @@ class CustomBottomNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BottomNavigationBar(
+      backgroundColor: Constants.colorButtonOnPress,
       currentIndex: selectedIndex,
-      selectedItemColor: Colors.blueGrey[900],
-      unselectedItemColor: Colors.grey,
+      selectedItemColor: Constants.colorError,
+      unselectedItemColor: Constants.colorFondo2,
       onTap: (index) {
         switch (index) {
           case 0:

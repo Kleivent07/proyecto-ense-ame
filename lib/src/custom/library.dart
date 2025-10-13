@@ -1,6 +1,6 @@
 // ignore_for_file: unreachable_switch_default
 import 'package:flutter/material.dart';
-import 'package:my_app/src/pages/perfil_page.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 //inicio
 import 'package:my_app/src/pages/splash_page.dart';
@@ -9,12 +9,13 @@ import 'package:my_app/src/pages/login/registro_page.dart';
 import 'package:my_app/src/pages/login/login_page.dart';
 
 //home
-import 'package:my_app/src/pages/home_es_page.dart';
-import 'package:my_app/src/pages/home_pro_page.dart';
+import 'package:my_app/src/pages/Estudiantes/home_es_page.dart';
+import 'package:my_app/src/pages/Profesores/home_pro_page.dart';
+
+import 'package:my_app/src/pages/perfil_page.dart';
+import 'package:my_app/src/pages/editar_perfil_page.dart';
 
 import 'package:my_app/src/pages/chatPage.dart';
-
-
 
 
 
@@ -74,7 +75,7 @@ navigate(BuildContext mContext, CustomPages mPage,{bool finishCurrent = false}) 
       break;
     case CustomPages.chatPage:
       Navigator.push(mContext, _goPage(const ChatsPage(), TypeAnimation.transition, 500));
-      break;  
+      break;
     default:
   }
 }
