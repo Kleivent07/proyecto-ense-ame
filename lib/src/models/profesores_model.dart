@@ -105,6 +105,22 @@ Future<List<Map<String, dynamic>>> obtenerTodosTutores({String busqueda = ''}) a
   } catch (e) {
     print('Error obteniendo tutores: $e');
     return [];
-  }
+  } 
 } 
+Future<Map<String, dynamic>?> obtenerTutor(String profesorId) async {
+  try {
+    final data = await supabase
+        .from('profesores')
+        .select('*, usuarios(*)') // <- Trae también los datos del usuario relacionado
+        .eq('id', profesorId)
+        .maybeSingle();
+
+    print('Perfil del profesor: $data');
+    return data;
+  } catch (e) {
+    print('Error obteniendo perfil del profesor: $e');
+    return null;
+  }
+}
+
 }

@@ -20,6 +20,7 @@ class CustomBottomNavBar extends StatelessWidget {
       backgroundColor: Constants.colorButtonOnPress,
       currentIndex: selectedIndex,
       selectedItemColor: Constants.colorError,
+
       unselectedItemColor: Constants.colorFondo2,
       onTap: (index) {
         switch (index) {
@@ -46,14 +47,20 @@ class CustomBottomNavBar extends StatelessWidget {
             //navigate(context, isEstudiante ? CustomPages.chatPage : CustomPages.chatProPage);
             break;
           case 4:
-            navigate(context, isEstudiante ? CustomPages.perfilPage : CustomPages.perfilPage);
+            navigate(
+              context,
+              isEstudiante ? CustomPages.perfilPage : CustomPages.perfilPage,
+            );
             break;
         }
       },
       type: BottomNavigationBarType.fixed,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Reuniones'),
-        BottomNavigationBarItem(icon: Icon(Icons.description), label: 'Documentos'),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.description),
+          label: 'Documentos',
+        ),
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
         BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
         BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),

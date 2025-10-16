@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:my_app/src/custom/no_teclado.dart';
 import 'package:my_app/src/util/constants.dart';
 import 'package:my_app/src/custom/library.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -22,14 +22,14 @@ class _LoginPageState extends State<LoginPage> {
   bool _mostrarContrasena = false;
 
   Future<void> _login() async {
-    final email = _usuarioController.text.trim();
+    final email = _usuarioController.text.trim().toLowerCase();
     final password = _contrasenaController.text;
 
     try {
-      await usuarioService.login(email, password); 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Inicio de sesión exitoso')),
-      );
+      await usuarioService.login(email, password);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Inicio de sesión exitoso')));
 
       // Luego podrías obtener datos del perfil
       final perfil = await usuarioService.obtenerPerfil();
@@ -38,7 +38,10 @@ class _LoginPageState extends State<LoginPage> {
       // Guardar estado de sesión y tipo de usuario
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('isLoggedIn', true);
-      await prefs.setString('tipoUsuario', perfil?['clase'] == 'Tutor' ? 'profesor' : 'estudiante');
+      await prefs.setString(
+        'tipoUsuario',
+        perfil?['clase'] == 'Tutor' ? 'profesor' : 'estudiante',
+      );
 
       // Aquí decides a qué pantalla navegar
       if (perfil?['clase'] == 'Tutor') {
@@ -47,16 +50,15 @@ class _LoginPageState extends State<LoginPage> {
         navigate(context, CustomPages.homeEsPage);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => FocusScope.of(context).unfocus(),
+    return cerrarTecladoAlTocar(
       child: Scaffold(
         backgroundColor: Constants.colorPrimaryDark,
         body: Form(
@@ -88,17 +90,20 @@ class _LoginPageState extends State<LoginPage> {
                         vertical: 18,
                       ),
                     ),
-                    child: Text('Iniciar Sesión', style: Constants.textStyleBLANCO),
+                    child: Text(
+                      'Iniciar Sesión',
+                      style: Constants.textStyleBLANCO,
+                    ),
                   ),
                   const SizedBox(height: 20),
                   TextButton(
-                      onPressed: () {
-                        navigate(context, CustomPages.registroPage);
-                      },
-                      child: Text(
-                        '¿No tienes cuenta? Regístrate aquí',
-                        style: Constants.textStyleBLANCO,
-                      ),
+                    onPressed: () {
+                      navigate(context, CustomPages.registroPage);
+                    },
+                    child: Text(
+                      '¿No tienes cuenta? Regístrate aquí',
+                      style: Constants.textStyleBLANCO,
+                    ),
                   ),
                 ],
               ),
@@ -123,16 +128,14 @@ class _LoginPageState extends State<LoginPage> {
         filled: true,
         fillColor: Constants.colorBackground,
         floatingLabelStyle: const TextStyle(
-          backgroundColor: Colors.white, 
-          color: Colors.black,          
-          fontSize: 18,                   
+          backgroundColor: Colors.white,
+          color: Colors.black,
+          fontSize: 18,
         ),
         suffixIcon: isPassword
             ? IconButton(
                 icon: Icon(
-                  _mostrarContrasena
-                      ? Icons.visibility
-                      : Icons.visibility_off,
+                  _mostrarContrasena ? Icons.visibility : Icons.visibility_off,
                   color: Constants.colorFont,
                 ),
                 onPressed: () {
@@ -142,9 +145,7 @@ class _LoginPageState extends State<LoginPage> {
                 },
               )
             : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-        ),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
   }

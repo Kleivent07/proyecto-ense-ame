@@ -1,11 +1,10 @@
 // ignore_for_file: unused_element_parameter
 
 import 'package:flutter/material.dart';
+import 'package:my_app/src/custom/no_teclado.dart';
 import 'package:my_app/src/util/constants.dart';
 import 'package:my_app/src/custom/library.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
-
-
 
 class RegistroPage extends StatefulWidget {
   const RegistroPage({super.key});
@@ -23,11 +22,12 @@ class _RegistroPageState extends State<RegistroPage> {
   final TextEditingController _usuarioController = TextEditingController();
   final TextEditingController _correoController = TextEditingController();
   final TextEditingController _contrasenaController = TextEditingController();
-  final TextEditingController _repetirContrasenaController = TextEditingController();
+  final TextEditingController _repetirContrasenaController =
+      TextEditingController();
   final TextEditingController _apellidoController = TextEditingController();
   final TextEditingController _fechaController = TextEditingController();
 
-  DateTime? _fechaNacimiento; 
+  DateTime? _fechaNacimiento;
 
   final Usuario usuarioService = Usuario();
 
@@ -43,37 +43,39 @@ class _RegistroPageState extends State<RegistroPage> {
   }
 
   Future<void> _seleccionarFecha() async {
-      final DateTime? fecha = await showDatePicker(
-        context: context,
-        initialDate: DateTime(2000, 1, 1),
-        firstDate: DateTime(1900),
-        lastDate: DateTime.now(),
-        builder: (context, child) {
-          // Cambiar colores del DatePicker
-          return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: ColorScheme.light(
-                primary: Constants.colorAccent,
-                onPrimary: Colors.white,
-                onSurface: Constants.colorFont,
-              ),
-              textButtonTheme: TextButtonThemeData(
-                style: TextButton.styleFrom(foregroundColor: Constants.colorAccent),
+    final DateTime? fecha = await showDatePicker(
+      context: context,
+      initialDate: DateTime(2000, 1, 1),
+      firstDate: DateTime(1900),
+      lastDate: DateTime.now(),
+      builder: (context, child) {
+        // Cambiar colores del DatePicker
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Constants.colorAccent,
+              onPrimary: Colors.white,
+              onSurface: Constants.colorFont,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Constants.colorAccent,
               ),
             ),
-            child: child!,
-          );
-        },
-      );
+          ),
+          child: child!,
+        );
+      },
+    );
 
-      if (fecha != null) {
-        setState(() {
-          _fechaNacimiento = fecha;
-          _fechaController.text =
-              "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}";
-        });
-      }
+    if (fecha != null) {
+      setState(() {
+        _fechaNacimiento = fecha;
+        _fechaController.text =
+            "${fecha.day.toString().padLeft(2, '0')}/${fecha.month.toString().padLeft(2, '0')}/${fecha.year}";
+      });
     }
+  }
 
   Future<void> _registrar() async {
     // Validaciones básicas
@@ -102,66 +104,64 @@ class _RegistroPageState extends State<RegistroPage> {
       _snack('Las contraseñas no coinciden');
       return;
     }
-  
 
-  try {
-    final claseFormateada = _tipoUsuario[0].toUpperCase() + _tipoUsuario.substring(1).toLowerCase();
-    // Llamada al servicio
-    final result = await usuarioService.registrarUsuario(
-      email: _correoController.text.trim(),
-      password: _contrasenaController.text.trim(),
-      nombre: _usuarioController.text.trim(),
-      apellido: _apellidoController.text.trim(),
-      clase: claseFormateada,
-      fechaNacimiento: _fechaNacimiento!,
-    );
-    if (claseFormateada != 'Estudiante' && claseFormateada != 'Tutor') {
-      _snack('Tipo de usuario inválido');
-      return;
-    }
-
-    if (result['ok'] == true) {
-      _snack(result['message'] ?? 'Registro exitoso');
-      navigate(context, CustomPages.loginPage);
-
-    } else {
-      // Traducimos posibles mensajes de error de Supabase
-      String mensaje = result['message'] ?? 'Error al registrar usuario';
-      if (mensaje.contains('User already registered')) {
-        mensaje = 'El usuario ya está registrado';
-      } else if (mensaje.contains('Invalid email')) {
-        mensaje = 'El correo electrónico no es válido';
-      } else if (mensaje.contains('Weak password')) {
-        mensaje = 'La contraseña es demasiado débil';
+    try {
+      final claseFormateada =
+          _tipoUsuario[0].toUpperCase() +
+          _tipoUsuario.substring(1).toLowerCase();
+      // Llamada al servicio
+      final result = await usuarioService.registrarUsuario(
+        email: _correoController.text.trim().toLowerCase(),
+        password: _contrasenaController.text.trim(),
+        nombre: _usuarioController.text.trim(),
+        apellido: _apellidoController.text.trim(),
+        clase: claseFormateada,
+        fechaNacimiento: _fechaNacimiento!,
+      );
+      if (claseFormateada != 'Estudiante' && claseFormateada != 'Tutor') {
+        _snack('Tipo de usuario inválido');
+        return;
       }
-      _snack(mensaje);
-    }
-  } catch (e) {
-    String error = e.toString();
-    if (error.contains('User already registered')) {
-      _snack('El usuario ya está registrado');
-    } else if (error.contains('Invalid email')) {
-      _snack('Correo electrónico no válido');
-    } else {
-      _snack('Ocurrió un error inesperado: $error');
+
+      if (result['ok'] == true) {
+        _snack(result['message'] ?? 'Registro exitoso');
+        navigate(context, CustomPages.loginPage);
+      } else {
+        // Traducimos posibles mensajes de error de Supabase
+        String mensaje = result['message'] ?? 'Error al registrar usuario';
+        if (mensaje.contains('User already registered')) {
+          mensaje = 'El usuario ya está registrado';
+        } else if (mensaje.contains('Invalid email')) {
+          mensaje = 'El correo electrónico no es válido';
+        } else if (mensaje.contains('Weak password')) {
+          mensaje = 'La contraseña es demasiado débil';
+        }
+        _snack(mensaje);
+      }
+    } catch (e) {
+      String error = e.toString();
+      if (error.contains('User already registered')) {
+        _snack('El usuario ya está registrado');
+      } else if (error.contains('Invalid email')) {
+        _snack('Correo electrónico no válido');
+      } else {
+        _snack('Ocurrió un error inesperado: $error');
+      }
     }
   }
-}
-
 
   void _snack(String mensaje) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(mensaje)));
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(mensaje)));
   }
 
   @override
-
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Constants.colorPrimaryDark,
-      body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        child: Center(
+    return cerrarTecladoAlTocar(
+      child: Scaffold(
+        backgroundColor: Constants.colorPrimaryDark,
+        body: Center(
           child: SingleChildScrollView(
             child: Container(
               decoration: BoxDecoration(
@@ -207,7 +207,9 @@ class _RegistroPageState extends State<RegistroPage> {
                     decoration: InputDecoration(
                       labelText: 'Fecha de nacimiento',
                       prefixIcon: Icon(Icons.calendar_today),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
                       filled: true,
                       fillColor: Colors.white,
                     ),
@@ -235,8 +237,9 @@ class _RegistroPageState extends State<RegistroPage> {
                     controller: _contrasenaController,
                     isPassword: true,
                     mostrarPassword: _mostrarContrasena,
-                    onVerPassword: () =>
-                        setState(() => _mostrarContrasena = !_mostrarContrasena),
+                    onVerPassword: () => setState(
+                      () => _mostrarContrasena = !_mostrarContrasena,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   _textoFieldStyle(
@@ -245,7 +248,9 @@ class _RegistroPageState extends State<RegistroPage> {
                     isPassword: true,
                     mostrarPassword: _mostrarRepetirContrasena,
                     onVerPassword: () => setState(
-                        () => _mostrarRepetirContrasena = !_mostrarRepetirContrasena),
+                      () => _mostrarRepetirContrasena =
+                          !_mostrarRepetirContrasena,
+                    ),
                   ),
                   const SizedBox(height: 10),
                   // Tipo de usuario
@@ -260,21 +265,30 @@ class _RegistroPageState extends State<RegistroPage> {
                             value: _tipoUsuario,
                             decoration: InputDecoration(
                               contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 0),
+                                horizontal: 12,
+                                vertical: 0,
+                              ),
                               border: OutlineInputBorder(
                                 borderRadius: BorderRadius.circular(10),
-                                borderSide: BorderSide(color: Constants.colorFont),
+                                borderSide: BorderSide(
+                                  color: Constants.colorFont,
+                                ),
                               ),
                               filled: true,
                               fillColor: Constants.colorBackground,
                             ),
                             items: <String>['Estudiante', 'Tutor']
-                                .map((value) => DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(value,
-                                          style:
-                                              TextStyle(color: Constants.colorFont)),
-                                    ))
+                                .map(
+                                  (value) => DropdownMenuItem<String>(
+                                    value: value,
+                                    child: Text(
+                                      value,
+                                      style: TextStyle(
+                                        color: Constants.colorFont,
+                                      ),
+                                    ),
+                                  ),
+                                )
                                 .toList(),
                             onChanged: (newValue) =>
                                 setState(() => _tipoUsuario = newValue!),
@@ -297,8 +311,10 @@ class _RegistroPageState extends State<RegistroPage> {
                       ),
                       const SizedBox(width: 5),
                       Expanded(
-                        child: Text('Acepto términos y condiciones',
-                            style: Constants.textStyleBLANCO),
+                        child: Text(
+                          'Acepto términos y condiciones',
+                          style: Constants.textStyleBLANCO,
+                        ),
                       ),
                     ],
                   ),
@@ -310,14 +326,18 @@ class _RegistroPageState extends State<RegistroPage> {
                       onPressed: _registrar,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 60, vertical: 15),
+                          horizontal: 60,
+                          vertical: 15,
+                        ),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(20),
                         ),
                         backgroundColor: Constants.colorAccent,
                       ),
-                      child:
-                          Text('Registrarse', style: Constants.textStyleBLANCOJumbo),
+                      child: Text(
+                        'Registrarse',
+                        style: Constants.textStyleBLANCOJumbo,
+                      ),
                     ),
                   ),
                 ],
@@ -340,7 +360,7 @@ class _RegistroPageState extends State<RegistroPage> {
     Color textoColor = Colors.black,
     double textoTamanio = 16,
     bool readOnly = false,
-    VoidCallback? onTap, 
+    VoidCallback? onTap,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
