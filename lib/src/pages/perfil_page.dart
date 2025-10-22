@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/no_teclado.dart';
+import 'package:my_app/src/pages/Estudiantes/lista_solicitud_estudiante_page.dart';
+import 'package:my_app/src/pages/Profesores/lista_solicitud_profesor_page.dart';
+import 'package:my_app/src/pages/lista_solicitudes_page.dart';
 import 'package:my_app/src/util/constants.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -13,6 +16,8 @@ import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:my_app/src/models/estudiantes_model.dart';
 import 'package:my_app/src/models/profesores_model.dart';
 import 'package:my_app/src/pages/editar_perfil_page.dart';
+import 'package:my_app/src/models/solicitud_model.dart';
+import 'package:my_app/src/custom/solicitud_data.dart';
 
 class PerfilPage extends StatefulWidget {
   const PerfilPage({Key? key}) : super(key: key);
@@ -38,25 +43,22 @@ class _PerfilPageState extends State<PerfilPage> {
     try {
       final userId = Supabase.instance.client.auth.currentUser!.id;
 
-      // Primero obtén el perfil general
       final perfilGeneral = await Usuario().obtenerPerfil();
-
-      // Detecta el tipo de usuario
       final esProf = perfilGeneral?['clase'] == 'Tutor';
 
-      // Obtén datos específicos según el tipo
       Map<String, dynamic>? perfilCompleto;
       if (esProf) {
         perfilCompleto = await ProfesorService().obtenerProfesor(userId);
       } else {
         perfilCompleto = await EstudianteService().obtenerEstudiante(userId);
       }
+
       setState(() {
         cargando = false;
         esProfesor = esProf;
         perfil = {
           ...?perfilGeneral,
-          ...?perfilCompleto, // Combina los datos generales y específicos
+          ...?perfilCompleto,
         };
       });
     } catch (e) {
@@ -64,13 +66,49 @@ class _PerfilPageState extends State<PerfilPage> {
       setState(() => cargando = false);
     }
   }
+  Future<List<SolicitudData>> _obtenerSolicitudes() async {
+  final userId = Supabase.instance.client.auth.currentUser!.id;
+  final solicitudModel = SolicitudModel();
+
+  if (esProfesor == true) {
+    // Si es profesor, obtiene solicitudes que le enviaron
+    return await solicitudModel.obtenerSolicitudesPorProfesor(userId);
+  } else {
+    // Si es estudiante, obtiene solicitudes que él envió
+    return await solicitudModel.obtenerSolicitudesPorEstudiante(userId);
+  }
+}
+Future<void> _irListaSolicitudes() async {
+  final solicitudes = await _obtenerSolicitudes();
+  if (!mounted) return;
+
+  if (esProfesor == true) {
+    // Profesores: van a aceptar/rechazar
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ListaSolicitudesProfesorPage(
+          solicitudes: solicitudes,
+        ),
+      ),
+    );
+  } else {
+    // Estudiantes: pueden eliminar sus solicitudes
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ListaSolicitudesEstudiantePage(
+          solicitudes: solicitudes,
+        ),
+      ),
+    );
+  }
+}
 
   Future<void> _logout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-
       await Supabase.instance.client.auth.signOut();
-
       await prefs.clear();
 
       if (mounted) {
@@ -82,9 +120,9 @@ class _PerfilPageState extends State<PerfilPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error al cerrar sesión: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error al cerrar sesión: $e')),
+        );
       }
     }
   }
@@ -112,10 +150,6 @@ class _PerfilPageState extends State<PerfilPage> {
             IconButton(
               icon: const Icon(Icons.edit),
               tooltip: 'Editar perfil',
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Constants.colorButton,
-                foregroundColor: Colors.white,
-              ),
               onPressed: () async {
                 final guardado = await Navigator.push<bool>(
                   context,
@@ -141,12 +175,12 @@ class _PerfilPageState extends State<PerfilPage> {
                 child: Column(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(2), // grosor del borde
+                      padding: const EdgeInsets.all(2),
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Constants.colorFont, // color del borde
-                          width: 3, // grosor del borde
+                          color: Constants.colorFont,
+                          width: 3,
                         ),
                       ),
                       child: CircleAvatar(
@@ -154,7 +188,7 @@ class _PerfilPageState extends State<PerfilPage> {
                         backgroundImage: perfil!['imagen_url'] != null
                             ? NetworkImage(perfil!['imagen_url'])
                             : const AssetImage('assets/default_avatar.jpg')
-                                  as ImageProvider,
+                                as ImageProvider,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -267,21 +301,8 @@ class _PerfilPageState extends State<PerfilPage> {
 
               const SizedBox(height: 24),
 
-              // === Botones según tipo ===
+              // === Botones ===
               if (esProfesor) ...[
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.star),
-                  label: const Text("Ver valoraciones"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Constants.colorButton,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () {},
-                ),
-                const SizedBox(height: 12),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.supervised_user_circle),
                   label: const Text("Mis Estudiantes"),
@@ -295,23 +316,21 @@ class _PerfilPageState extends State<PerfilPage> {
                   onPressed: () {},
                 ),
                 const SizedBox(height: 12),
-              ] else ...[
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.star_half),
-                  label: const Text("Mis Valoraciones"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Constants.colorButton,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  onPressed: () {},
-                ),
-                const SizedBox(height: 12),
               ],
-
-              // === Cambiar contraseña ===
+              // Botón para ir a la lista de solicitudes
+              ElevatedButton.icon(
+                icon: const Icon(Icons.mail),
+                label: Text(esProfesor ? "Solicitudes Recibidas" : "Mis Solicitudes"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Constants.colorPrimary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                onPressed: _irListaSolicitudes,
+              ),
+              const SizedBox(height: 12),
               ElevatedButton.icon(
                 icon: const Icon(Icons.lock),
                 label: const Text("Cambiar contraseña"),
@@ -327,7 +346,6 @@ class _PerfilPageState extends State<PerfilPage> {
 
               const SizedBox(height: 12),
 
-              // === Cerrar sesión ===
               ElevatedButton.icon(
                 icon: const Icon(Icons.logout),
                 label: const Text("Cerrar sesión"),

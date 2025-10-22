@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/models/profesores_model.dart';
 import 'package:my_app/src/util/constants.dart';
+import 'package:my_app/src/models/solicitud_model.dart';
+import 'package:my_app/src/custom/solicitud_data.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PerfilTutorPage extends StatefulWidget {
   final String tutorId;
@@ -14,9 +17,8 @@ class PerfilTutorPage extends StatefulWidget {
 class _PerfilTutorPageState extends State<PerfilTutorPage> {
   Map<String, dynamic>? tutor;
   bool isLoading = true;
-
-  // Ejemplo de comentarios
-  List<Map<String, dynamic>> comentarios = [];
+  final solicitudModel = SolicitudModel();
+  String estadoSolicitud = 'none';
 
   @override
   void initState() {
@@ -28,145 +30,184 @@ class _PerfilTutorPageState extends State<PerfilTutorPage> {
     final profService = ProfesorService();
     final data = await profService.obtenerTutor(widget.tutorId);
 
-    if (data != null) {
-      setState(() {
-        tutor = data;
-        isLoading = false;
+    setState(() {
+      tutor = data;
+      isLoading = false;
+    });
 
-        // Comentarios de ejemplo (puedes reemplazarlos con los de tu base de datos)
-        comentarios = [
-          {'usuario': 'Ana P.', 'comentario': 'Muy buen profesor, explica claro.'},
-          {'usuario': 'Luis G.', 'comentario': 'Paciente y amable.'},
-        ];
-      });
-    } else {
+    final estudianteId = Supabase.instance.client.auth.currentUser?.id;
+    if (estudianteId != null) {
+      verificarEstadoSolicitud(estudianteId, widget.tutorId);
+    }
+  }
+
+  Future<void> enviarSolicitud(String profesorId) async {
+    try {
+      final estudianteId = Supabase.instance.client.auth.currentUser?.id;
+      if (estudianteId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo obtener tu ID de usuario.')),
+        );
+        return;
+      }
+
+      final nuevaSolicitud = SolicitudData(
+        estudianteId: estudianteId,
+        profesorId: profesorId,
+        estado: 'pendiente',
+        fechaSolicitud: DateTime.now(),
+      );
+
+      await solicitudModel.crearSolicitud(nuevaSolicitud);
+
       setState(() {
-        tutor = null;
-        isLoading = false;
+        estadoSolicitud = 'pendiente';
       });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Solicitud enviada correctamente')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error al enviar solicitud: $e')),
+      );
+    }
+  }
+
+  Future<void> verificarEstadoSolicitud(String estudianteId, String profesorId) async {
+    try {
+      final solicitudes = await solicitudModel.obtenerSolicitudesPorEstudiante(estudianteId);
+
+      final existente = solicitudes.firstWhere(
+        (s) => s.profesorId == profesorId,
+        orElse: () => SolicitudData(
+          id: '',
+          estudianteId: estudianteId,
+          profesorId: profesorId,
+          estado: 'none',
+          fechaSolicitud: DateTime.now(),
+        ),
+      );
+
+      setState(() {
+        estadoSolicitud = existente.estado;
+      });
+    } catch (e) {
+      print('Error al verificar solicitud: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
-
-    if (tutor == null) {
-      return const Scaffold(
-        body: Center(child: Text('Tutor no encontrado')),
-      );
-    }
+    if (isLoading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (tutor == null) return const Scaffold(body: Center(child: Text('Tutor no encontrado')));
 
     final usuario = tutor!['usuarios'] ?? {};
     final nombre = usuario['nombre'] ?? 'Sin nombre';
     final apellido = usuario['apellido'] ?? '';
-    final especialidad = tutor!['especialidad'] ?? 'Sin definir';
-    final horario = tutor!['horario'] ?? 'Por definir';
+    final especialidad = tutor!['especialidad'] ?? 'No definida';
+    final carrera = tutor!['carrera_profesion'] ?? 'No definida';
+    final horario = tutor!['horario'] ?? 'No definido';
+    final experiencia = tutor!['experiencia'] ?? 'No especificada';
+    final email = usuario['email'] ?? 'Sin correo';
+    final biografia = usuario['biografia'] ?? 'Este tutor aún no ha agregado una biografía.';
     final imagenUrl = usuario['imagen_url'];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('$nombre $apellido', style: Constants.textStylePrimaryTitle),
+        title: const Text('Perfil del Tutor'),
+        foregroundColor: Colors.white,
         backgroundColor: Constants.colorPrimary,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(4), // grosor del borde
-              decoration: BoxDecoration(
-                color: Constants.colorPrimary, // color del borde
-                shape: BoxShape.circle,
-              ),
-              child: CircleAvatar(
-                radius: 56, // radio un poco más pequeño que el borde
-                backgroundImage: imagenUrl != null
-                    ? NetworkImage(imagenUrl)
-                    : const AssetImage('assets/default_avatar.jpg') as ImageProvider,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text('$nombre $apellido', style: Constants.textStylePrimaryTitle),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.school, color: Colors.blueAccent),
-                const SizedBox(width: 8),
-                Text(especialidad, style: Constants.textStyleFont),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.schedule, color: Colors.blueAccent),
-                const SizedBox(width: 8),
-                Text(horario, style: Constants.textStyleFont),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const [
-                Icon(Icons.star, color: Colors.amber),
-                Icon(Icons.star, color: Colors.amber),
-                Icon(Icons.star, color: Colors.amber),
-                Icon(Icons.star_half, color: Colors.amber),
-                Icon(Icons.star_border, color: Colors.amber),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text('Clasificación: 3.5 / 5.0', style: TextStyle(fontSize: 16)),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Solicitud enviada (ejemplo)')),
-                );
-              },
-              icon: const Icon(Icons.send, color: Colors.white),
-              label: const Text('Solicitar tutoría', style: TextStyle(color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Constants.colorPrimary,
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 32),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            // Sección de comentarios
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text('Comentarios', style: Constants.textStylePrimaryTitle),
-            ),
-            const SizedBox(height: 16),
-            comentarios.isEmpty
-                ? const Text('No hay comentarios todavía.', style: TextStyle(fontSize: 16))
-                : ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: comentarios.length,
-                    itemBuilder: (context, index) {
-                      final com = comentarios[index];
-                      return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4),
-                        child: ListTile(
-                          title: Text(com['usuario'] ?? '', style: Constants.textStylePrimarySemiBold),
-                          subtitle: Text(com['comentario'] ?? '', style: Constants.textStyleFont),
-                        ),
-                      );
-                    },
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: Card(
+            elevation: 6,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                children: [
+                  CircleAvatar(
+                    radius: 55,
+                    backgroundImage: imagenUrl != null && imagenUrl.isNotEmpty
+                        ? NetworkImage(imagenUrl)
+                        : const AssetImage('assets/default_avatar.jpg') as ImageProvider,
                   ),
-          ],
+                  const SizedBox(height: 16),
+                  Text('$nombre $apellido', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Text(especialidad, style: TextStyle(fontSize: 16, color: Colors.grey[700])),
+                  Text(carrera, style: TextStyle(fontSize: 15, color: Colors.grey[600])),
+                  const SizedBox(height: 20),
+                  const Divider(thickness: 1),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildInfoRow(Icons.access_time, 'Horario', horario),
+                        _buildInfoRow(Icons.school, 'Experiencia', experiencia),
+                        _buildInfoRow(Icons.email, 'Correo electrónico', email),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  const Divider(thickness: 1),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Biografía', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Text(biografia, style: TextStyle(fontSize: 15, color: Colors.grey[800])),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: estadoSolicitud == 'none' ? () => enviarSolicitud(widget.tutorId) : null,
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      label: Text(
+                        estadoSolicitud == 'pendiente'
+                            ? 'Solicitud enviada'
+                            : estadoSolicitud == 'aceptada'
+                                ? 'Solicitud aceptada'
+                                : estadoSolicitud == 'rechazada'
+                                    ? 'Solicitud rechazada'
+                                    : 'Solicitar tutoría',
+                        style: const TextStyle(fontSize: 16, color: Colors.white),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                        backgroundColor: Constants.colorPrimary,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.grey[700]),
+          const SizedBox(width: 10),
+          Expanded(child: Text('$label: $value', style: TextStyle(fontSize: 15, color: Colors.grey[800]))),
+        ],
       ),
     );
   }
