@@ -4,6 +4,10 @@ import '../custom/solicitud_data.dart';
 import '../models/solicitud_model.dart';
 import '../util/constants.dart';
 
+// imports añadidos
+import '../models/chat_model.dart';
+import 'chat_page.dart';
+
 class ListaSolicitudesPage extends StatefulWidget {
   final List<SolicitudData> solicitudes;
   final bool esProfesor;
@@ -21,6 +25,7 @@ class ListaSolicitudesPage extends StatefulWidget {
 class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
   late List<SolicitudData> solicitudes;
   final solicitudModel = SolicitudModel();
+  final chatModel = ChatModel(); // instancia para abrir chats
 
   @override
   void initState() {
@@ -35,7 +40,15 @@ class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
       await solicitudModel.actualizarEstado(solicitud.id, nuevoEstado);
 
       setState(() {
-        solicitud.estado = nuevoEstado;
+        final index = solicitudes.indexOf(solicitud);
+        solicitudes[index] = SolicitudData(
+          id: solicitud.id,
+          estudianteId: solicitud.estudianteId,
+          profesorId: solicitud.profesorId,
+          nombreTutor: solicitud.nombreTutor,
+          fechaSolicitud: solicitud.fechaSolicitud,
+          estado: nuevoEstado,
+        );
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -45,6 +58,27 @@ class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al actualizar solicitud: $e')),
       );
+    }
+  }
+
+  // Nuevo helper: abrir chat (obtiene/crea room y navega)
+  Future<void> _openChat(SolicitudData solicitud) async {
+    final sm = ScaffoldMessenger.of(context);
+    sm.showSnackBar(const SnackBar(content: Text('Abriendo chat...')));
+    try {
+      final roomId = await chatModel.ensureAccessAndGetRoom(solicitud.id);
+      if (roomId == null) {
+        sm.showSnackBar(const SnackBar(content: Text('No tienes acceso al chat o la solicitud no está aceptada.')));
+        return;
+      }
+      // Ajusta el constructor de ChatPage si es distinto (aquí paso solicitudId y roomId)
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ChatPage(solicitudId: solicitud.id, roomId: roomId),
+        ),
+      );
+    } catch (e) {
+      sm.showSnackBar(SnackBar(content: Text('Error al abrir chat: $e')));
     }
   }
 
@@ -78,25 +112,32 @@ class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
                     ),
                     subtitle: Text('Estado: ${solicitud.estado}\nFecha: $fecha'),
                     isThreeLine: true,
-                    trailing: widget.esProfesor
-                        ? Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.check, color: Colors.green),
-                                onPressed: solicitud.estado != 'aceptada'
-                                    ? () => actualizarSolicitudEstado(solicitud, 'aceptada')
-                                    : null,
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.close, color: Colors.red),
-                                onPressed: solicitud.estado != 'rechazada'
-                                    ? () => actualizarSolicitudEstado(solicitud, 'rechazada')
-                                    : null,
-                              ),
-                            ],
-                          )
-                        : null,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // boton aceptar/rechazar (solo para profesor)
+                        if (widget.esProfesor) ...[
+                          IconButton(
+                            icon: const Icon(Icons.check, color: Colors.green),
+                            onPressed: solicitud.estado != 'aceptada'
+                                ? () => actualizarSolicitudEstado(solicitud, 'aceptada')
+                                : null,
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, color: Colors.red),
+                            onPressed: solicitud.estado != 'rechazada'
+                                ? () => actualizarSolicitudEstado(solicitud, 'rechazada')
+                                : null,
+                          ),
+                        ],
+                        // boton chat (siempre visible): abrir chat del estudiante/profesor
+                        IconButton(
+                          icon: const Icon(Icons.chat_bubble_outline),
+                          tooltip: 'Abrir chat',
+                          onPressed: () => _openChat(solicitud),
+                        ),
+                      ],
+                    ),
                   ),
                 );
               },
@@ -104,3 +145,4 @@ class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
     );
   }
 }
+

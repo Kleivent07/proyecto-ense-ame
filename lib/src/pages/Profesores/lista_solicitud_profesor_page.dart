@@ -27,7 +27,8 @@ class _ListaSolicitudesProfesorPageState extends State<ListaSolicitudesProfesorP
     try {
       await solicitudModel.actualizarEstado(solicitud.id, nuevoEstado);
       setState(() {
-        solicitud.estado = nuevoEstado;
+        final index = solicitudes.indexOf(solicitud);
+        solicitudes[index] = solicitud.copyWith(estado: nuevoEstado);
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Solicitud $nuevoEstado correctamente')),
@@ -90,3 +91,4 @@ class _ListaSolicitudesProfesorPageState extends State<ListaSolicitudesProfesorP
     );
   }
 }
+

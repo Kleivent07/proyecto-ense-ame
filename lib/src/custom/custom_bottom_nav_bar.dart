@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/library.dart';
-import 'package:my_app/src/util/constants.dart';
+import '../custom/library.dart';
+import '../util/constants.dart';
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
   final bool isEstudiante;
-  final VoidCallback? onReloadHome; // Nuevo parámetro
+  final VoidCallback? onReloadHome;
 
   const CustomBottomNavBar({
     super.key,
@@ -20,22 +20,21 @@ class CustomBottomNavBar extends StatelessWidget {
       backgroundColor: Constants.colorButtonOnPress,
       currentIndex: selectedIndex,
       selectedItemColor: Constants.colorError,
-
       unselectedItemColor: Constants.colorFondo2,
       onTap: (index) {
         switch (index) {
           case 0:
+            // navegar a Reuniones (ajusta si necesitas)
             //navigate(context, isEstudiante ? CustomPages.reunionesPage : CustomPages.reunionesProPage);
             break;
           case 1:
+            // navegar a Documentos (ajusta si necesitas)
             //navigate(context, isEstudiante ? CustomPages.documentosPage : CustomPages.documentosProPage);
             break;
           case 2:
             if (selectedIndex == 2 && onReloadHome != null) {
-              // Si ya está en Home, recarga
               onReloadHome!();
             } else {
-              // Si no está en Home, navega
               navigate(
                 context,
                 isEstudiante ? CustomPages.homeEsPage : CustomPages.homeProPage,
@@ -44,12 +43,13 @@ class CustomBottomNavBar extends StatelessWidget {
             }
             break;
           case 3:
-            //navigate(context, isEstudiante ? CustomPages.chatPage : CustomPages.chatProPage);
+            print('[NAVBAR] Chat pressed');
+            navigate(context, CustomPages.chatListPage);
             break;
           case 4:
             navigate(
               context,
-              isEstudiante ? CustomPages.perfilPage : CustomPages.perfilPage,
+              CustomPages.perfilPage,
             );
             break;
         }
@@ -57,10 +57,7 @@ class CustomBottomNavBar extends StatelessWidget {
       type: BottomNavigationBarType.fixed,
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Reuniones'),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.description),
-          label: 'Documentos',
-        ),
+        BottomNavigationBarItem(icon: Icon(Icons.description), label: 'Documentos'),
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
         BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
         BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Perfil'),
@@ -68,3 +65,4 @@ class CustomBottomNavBar extends StatelessWidget {
     );
   }
 }
+

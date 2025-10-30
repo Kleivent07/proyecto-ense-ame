@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:my_app/src/custom/custom_bottom_nav_bar.dart';
 import 'package:my_app/src/custom/no_teclado.dart';
 import 'package:my_app/src/pages/Estudiantes/lista_solicitud_estudiante_page.dart';
 import 'package:my_app/src/pages/Profesores/lista_solicitud_profesor_page.dart';
@@ -8,7 +9,6 @@ import 'package:my_app/src/util/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:my_app/src/custom/CustomBottomNavBar.dart';
 import 'package:my_app/src/custom/refrescar.dart';
 import 'package:my_app/src/custom/library.dart';
 
@@ -379,3 +379,4 @@ Future<void> _irListaSolicitudes() async {
     );
   }
 }
+

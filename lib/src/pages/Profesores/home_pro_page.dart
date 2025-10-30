@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/CustomBottomNavBar.dart';
+import 'package:my_app/src/custom/custom_bottom_nav_bar.dart';
 import 'package:my_app/src/custom/no_teclado.dart';
 import 'package:my_app/src/custom/refrescar.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
@@ -202,3 +202,4 @@ class _HomePROPageState extends State<HomePROPage> {
     );
   }
 }
+

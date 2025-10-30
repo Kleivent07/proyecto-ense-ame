@@ -80,3 +80,4 @@ class _ListaSolicitudesEstudiantePageState extends State<ListaSolicitudesEstudia
     );
   }
 }
+

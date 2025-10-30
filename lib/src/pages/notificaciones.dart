@@ -13,3 +13,4 @@ class NotificacionesPage extends StatelessWidget {
     );
   }
 }
+

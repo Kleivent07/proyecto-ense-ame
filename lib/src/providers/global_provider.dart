@@ -10,3 +10,4 @@ class GlobalProvider extends ChangeNotifier {
     notifyListeners(); 
   }
 }
+
