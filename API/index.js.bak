@@ -1,0 +1,224 @@
+const express = require('express');
+// si tu Node ya tiene fetch global, puedes eliminar esta dependencia
+const fetch = require('node-fetch');
+const dotenv = require('dotenv');
+const crypto = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
+
+dotenv.config();
+
+const app = express();
+
+// Necesitamos raw body para verificar webhooks
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf && buf.length ? buf.toString('utf8') : '';
+  }
+}));
+
+// Logging simple
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} from ${req.ip || req.socket.remoteAddress}`);
+  if (['POST','PUT','PATCH'].includes(req.method)) {
+    try { console.log('body:', req.body); } catch(e) {}
+  }
+  next();
+});
+
+// Supabase admin client (service_role)
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+let supabaseAdmin = null;
+if (SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY) {
+  supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+} else {
+  console.warn('Falta SUPABASE_URL o SUPABASE_SERVICE_ROLE_KEY en .env — la inserción en DB no funcionará.');
+}
+
+// Zoom credentials
+const ZOOM_CLIENT_ID = process.env.ZOOM_CLIENT_ID;
+const ZOOM_CLIENT_SECRET = process.env.ZOOM_CLIENT_SECRET;
+const ZOOM_ACCOUNT_ID = process.env.ZOOM_ACCOUNT_ID; // opcional
+const ZOOM_EVENT_SECRET = process.env.ZOOM_EVENT_SECRET;
+
+// Token cache simple en memoria
+let zoomTokenCache = { token: null, expiresAt: 0 };
+
+async function getZoomAccessToken() {
+  const now = Date.now();
+  if (zoomTokenCache.token && now < zoomTokenCache.expiresAt - 5000) {
+    return zoomTokenCache.token;
+  }
+
+  if (!ZOOM_CLIENT_ID || !ZOOM_CLIENT_SECRET) {
+    const e = new Error('missing_zoom_credentials');
+    e.detail = 'ZOOM_CLIENT_ID or ZOOM_CLIENT_SECRET missing in env';
+    throw e;
+  }
+
+  const basic = Buffer.from(`${ZOOM_CLIENT_ID}:${ZOOM_CLIENT_SECRET}`).toString('base64');
+  const url = 'https://zoom.us/oauth/token';
+  const body = ZOOM_ACCOUNT_ID ? `grant_type=account_credentials&account_id=${encodeURIComponent(ZOOM_ACCOUNT_ID)}` : 'grant_type=account_credentials';
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${basic}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json'
+    },
+    body
+  });
+
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch (e) {
+    console.error('Non-JSON token response from Zoom:', text);
+    const err = new Error('zoom_token_non_json');
+    err.detail = text;
+    throw err;
+  }
+
+  if (!res.ok) {
+    console.error('Zoom token request failed:', res.status, json);
+    const err = new Error('zoom_token_failed');
+    err.detail = json || text;
+    throw err;
+  }
+
+  if (!json.access_token) {
+    console.error('Zoom token missing access_token:', json);
+    const err = new Error('zoom_token_no_access_token');
+    err.detail = json;
+    throw err;
+  }
+
+  zoomTokenCache.token = json.access_token;
+  zoomTokenCache.expiresAt = Date.now() + ((json.expires_in || 3599) * 1000);
+
+  console.log('Obtained Zoom access token (cached), expires_in:', json.expires_in);
+  return zoomTokenCache.token;
+}
+
+async function createZoomMeeting(accessToken, hostEmail, meetingPayload) {
+  const url = `https://api.zoom.us/v2/users/${encodeURIComponent(hostEmail)}/meetings`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    body: JSON.stringify(meetingPayload)
+  });
+
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch (e) { json = null; }
+
+  if (!res.ok) {
+    console.error('Zoom create meeting failed:', res.status, json || text);
+    const err = new Error('zoom_api_failed');
+    err.detail = json || text;
+    throw err;
+  }
+  return json;
+}
+
+app.post('/create-zoom-meeting', async (req, res) => {
+  try {
+    const { host_email, topic = 'Reunión', start_time, duration = 30, timezone = 'UTC', room_id = null, created_by = null } = req.body;
+
+    if (!host_email) return res.status(400).json({ error: 'missing_host_email' });
+
+    // obtener token dinámicamente
+    const accessToken = await getZoomAccessToken();
+
+    const meetingPayload = {
+      topic,
+      type: start_time ? 2 : 1, // type 2 => scheduled recurring non-recurring meeting with start_time
+      start_time,
+      duration,
+      timezone,
+      settings: {
+        join_before_host: false,
+        host_video: true,
+        participant_video: false,
+        mute_upon_entry: true
+      }
+    };
+
+    const zoomResp = await createZoomMeeting(accessToken, host_email, meetingPayload);
+
+    // preparar fila para supabase siguiendo esquema razonable
+    const row = {
+      zoom_id: zoomResp.id?.toString() || null,
+      room_id: room_id,
+      topic: zoomResp.topic || topic,
+      start_time: zoomResp.start_time || start_time,
+      duration: zoomResp.duration || duration,
+      timezone: zoomResp.timezone || timezone,
+      join_url: zoomResp.join_url || null,
+      start_url: zoomResp.start_url || null,
+      passcode: zoomResp.password || null,
+      status: zoomResp.status || null,
+      recording_url: null,
+      host_id: zoomResp.host_id || null,
+      created_by: created_by || host_email,
+      settings: zoomResp.settings || {},
+      created_at: new Date().toISOString()
+    };
+
+    let insertedRow = null;
+    if (supabaseAdmin) {
+      const { data, error } = await supabaseAdmin
+        .from('zoom_meetings')
+        .insert([row])
+        .select()
+        .limit(1);
+
+      if (error) {
+        console.error('Supabase insert error:', error);
+        // devolveremos el zoomResp aunque la inserción falle
+      } else {
+        insertedRow = Array.isArray(data) ? data[0] : data;
+      }
+    } else {
+      console.warn('Supabase admin client no configurado; no se insertó en DB');
+    }
+
+    return res.json({ ok: true, zoom: zoomResp, db_row: insertedRow });
+  } catch (err) {
+    console.error('Error en /create-zoom-meeting:', err.message || err, err.detail || '');
+    const status = err.message && err.message.startsWith('zoom_') ? 502 : 500;
+    return res.status(status).json({ error: err.message || 'server_error', detail: err.detail || err.toString() });
+  }
+});
+
+// Webhook endpoint con verificación HMAC (Zoom Event Subscriptions)
+app.post('/zoom-webhook', (req, res) => {
+  const signature = req.headers['x-zm-signature'];
+  if (!ZOOM_EVENT_SECRET) {
+    console.warn('ZOOM_EVENT_SECRET no configurado; no se puede verificar webhook');
+    return res.status(500).send('server misconfigured');
+  }
+  if (!signature) return res.status(400).send('missing signature');
+
+  const hmac = crypto.createHmac('sha256', ZOOM_EVENT_SECRET);
+  hmac.update(req.rawBody || '');
+  const expected = hmac.digest('base64');
+
+  if (signature !== expected) {
+    console.warn('Webhook signature mismatch', { received: signature, expected });
+    return res.status(401).send('invalid signature');
+  }
+
+  // Procesar evento (puedes añadir lógica para insertar eventos en DB)
+  console.log('Verified Zoom webhook event:', req.body);
+  return res.status(200).send('ok');
+});
+
+app.get('/ping', (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`Server listening on ${PORT}`));
