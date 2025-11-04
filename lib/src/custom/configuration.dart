@@ -1,11 +1,12 @@
-class Configuration {
-static String mVersion = "1.0.0"; //version de la app
-//variables server desarrollo
-static String mSupabaseUrl = "https://dzqgzcmbbqllljkjqnfb.supabase.co";
-static String mSupabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR6cWd6Y21iYnFsbGxqa2pxbmZiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTkxNzI1ODIsImV4cCI6MjA3NDc0ODU4Mn0.jMCG6qhTYEmIn3up83opYi9lmDDGbCi4i-1ppfP5Wto";
+﻿class Configuration {
+  static String mVersion = "1.0.0";
+  // URL pública de Supabase (puedes conservarla)
+  static String mSupabaseUrl = "https://dzqgzcmbbqllljkjqnfb.supabase.co";
+  // NO guardar keys sensibles en el cliente. Usa la anon key si necesitas acceso directo desde Flutter.
+  static String mSupabaseAnonKey = "YOUR_SUPABASE_ANON_KEY_HERE";
 
-
-
+  // Zoom: dejar vacío en el cliente. El servidor maneja client_secret y token.
+  static String mZoomAppID = "";
+  static String mZoomAppClient = "";
+  static String mZoomAppSecret = "";
 }
-
-//password: mQhiWQN8Oyz93qLQ
