@@ -44,4 +44,26 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Node/npm
+node_modules/
+npm-debug.log
+package-lock.json
+
+# Env files / secrets
+.env
+API/.env
+*.local
+*.env.*
+
+# builds / outputs
+build/
+dist/
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
 API/.env
