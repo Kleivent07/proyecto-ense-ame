@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../custom/solicitud_data.dart';
-import '../models/solicitud_model.dart';
-import '../util/constants.dart';
+import '../../custom/solicitud_data.dart';
+import '../../models/solicitud_model.dart';
+import '../../util/constants.dart';
 
 // imports añadidos
-import '../models/chat_model.dart';
-import 'chat_page.dart';
+import '../../models/chat_model.dart';
+import '../Chat/chat_page.dart';
 
 class ListaSolicitudesPage extends StatefulWidget {
   final List<SolicitudData> solicitudes;

@@ -1,4 +1,5 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import fetch from "node-fetch";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
@@ -11,6 +12,8 @@ app.use(express.json());
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY; // debe ser service_role o anon key según tu seguridad
 const ZOOM_JWT_TOKEN = process.env.ZOOM_JWT_TOKEN; // o token de Server-to-Server OAuth
+const SDK_APP_KEY = process.env.ZOOM_SDK_APP_KEY; // set en .env
+const SDK_APP_SECRET = process.env.ZOOM_SDK_APP_SECRET; // set en .env
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   console.error("Faltan variables de entorno SUPABASE_URL o SUPABASE_KEY");
@@ -44,6 +47,21 @@ async function getUserFromSupabaseToken(accessToken) {
     console.error("Error validando token supabase:", err);
     return null;
   }
+}
+
+// Requiere: npm install jsonwebtoken node-fetch @supabase/supabase-js dotenv
+// Helper: valida token de supabase
+async function validateSupabaseToken(accessToken) {
+  if (!accessToken) return null;
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      apikey: SUPABASE_KEY,
+    },
+  });
+  if (!res.ok) return null;
+  return res.json(); // contiene datos del user
 }
 
 // RUTA: obtener usuarios de la app (usada por CrearReunionPage)
@@ -146,6 +164,34 @@ app.post("/create-zoom-meeting", async (req, res) => {
   } catch (err) {
     console.error("Error creando reunión:", err);
     res.status(500).json({ error: "Error interno", details: String(err) });
+  }
+});
+
+// RUTA: generar token SDK para Zoom (MobileRTC)
+app.post("/sdk-token", async (req, res) => {
+  try {
+    const authHeader = req.headers["authorization"] || "";
+    const accessToken = authHeader.replace(/^Bearer\s+/i, "");
+
+    const user = await validateSupabaseToken(accessToken);
+    if (!user) return res.status(401).json({ error: "Token inválido" });
+
+    // Generar JWT (payload requerido por MobileRTC SDK)
+    const iat = Math.floor(Date.now() / 1000);
+    const tokenExp = iat + 60 * 60; // exp en 1 hora (ajusta según necesidad)
+    const payload = {
+      appKey: SDK_APP_KEY,
+      iat: iat,
+      exp: tokenExp,
+      tokenExp: tokenExp,
+    };
+
+    const token = jwt.sign(payload, SDK_APP_SECRET, { algorithm: "HS256" });
+
+    return res.json({ token });
+  } catch (err) {
+    console.error("sdk-token error", err);
+    return res.status(500).json({ error: "internal_error" });
   }
 });
 

@@ -8,10 +8,10 @@ import '../pages/login/registro_page.dart';
 import '../pages/login/login_page.dart';
 import '../pages/Estudiantes/home_es_page.dart';
 import '../pages/Profesores/home_pro_page.dart';
-import '../pages/perfil_page.dart';
-import '../pages/editar_perfil_page.dart';
-import '../pages/chat_list_page.dart';
-import '../pages/chat_page.dart';
+import '../pages/Editar/perfil_page.dart';
+import '../pages/Editar/editar_perfil_page.dart';
+import '../pages/Chat/chat_list_page.dart';
+import '../pages/Chat/chat_page.dart';
 
 
 

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import '../custom/library.dart';
 import '../util/constants.dart';
-import '../pages/reunuiones_page.dart'; // <<< nueva import
+import '../pages/ReunionesZoom/zoom_home_page.dart'; // <<< nueva import
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -25,10 +25,9 @@ class CustomBottomNavBar extends StatelessWidget {
       onTap: (index) {
         switch (index) {
           case 0:
-            // Navegar a la página de Reuniones
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (_) => const ReunuionesPage()),
+              MaterialPageRoute(builder: (_) => const ZoomHomePage()),
             );
             break;
           case 1:

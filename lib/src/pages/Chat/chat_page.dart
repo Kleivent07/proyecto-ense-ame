@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:my_app/src/models/zoom_meeting_model.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/chat_model.dart';
+import '../../models/chat_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../custom/library.dart';
+import '../../custom/library.dart';
 
 class ChatPage extends StatefulWidget {
   final String solicitudId;

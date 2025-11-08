@@ -4,7 +4,7 @@ import 'package:my_app/src/custom/no_teclado.dart';
 import 'package:my_app/src/custom/refrescar.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:my_app/src/pages/Estudiantes/buscar_profesores_page.dart';
-import 'package:my_app/src/pages/editar_perfil_page.dart';
+import 'package:my_app/src/pages/Editar/editar_perfil_page.dart';
 import 'package:my_app/src/pages/notificaciones.dart';
 import 'package:my_app/src/util/constants.dart';
 
