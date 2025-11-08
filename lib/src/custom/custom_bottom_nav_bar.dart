@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../custom/library.dart';
 import '../util/constants.dart';
-import '../pages/ReunionesZoom/zoom_home_page.dart'; // <<< nueva import
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -25,14 +24,16 @@ class CustomBottomNavBar extends StatelessWidget {
       onTap: (index) {
         switch (index) {
           case 0:
-            Navigator.push(
+            // El botón 0 anteriormente abría Reuniones; ahora navegamos al Home.
+            navigate(
               context,
-              MaterialPageRoute(builder: (_) => const ZoomHomePage()),
+              isEstudiante ? CustomPages.homeEsPage : CustomPages.homeProPage,
+              finishCurrent: true,
             );
             break;
           case 1:
             // navegar a Documentos (ajusta si necesitas)
-            //navigate(context, isEstudiante ? CustomPages.documentosPage : CustomPages.documentosProPage);
+            // navigate(context, isEstudiante ? CustomPages.documentosPage : CustomPages.documentosProPage);
             break;
           case 2:
             if (selectedIndex == 2 && onReloadHome != null) {
@@ -59,7 +60,7 @@ class CustomBottomNavBar extends StatelessWidget {
       },
       type: BottomNavigationBarType.fixed,
       items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Reuniones'),
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
         BottomNavigationBarItem(icon: Icon(Icons.description), label: 'Documentos'),
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
         BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
