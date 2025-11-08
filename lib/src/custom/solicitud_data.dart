@@ -6,6 +6,7 @@ class SolicitudData {
   final DateTime fechaSolicitud;
   final String nombreTutor;
   final String nombreEstudiante;
+  final String mensaje; // <-- nuevo
 
   SolicitudData({
     this.id = '',
@@ -15,13 +16,13 @@ class SolicitudData {
     DateTime? fechaSolicitud,
     this.nombreTutor = '',
     this.nombreEstudiante = '',
+    this.mensaje = '', // <-- nuevo
   }) : fechaSolicitud = fechaSolicitud ?? DateTime.now();
 
   /// Crea una instancia desde un Map (tolerante a distintos shapes).
   factory SolicitudData.fromMap(Map<String, dynamic> map) {
     String parseName(Map<String, dynamic>? node) {
       if (node == null) return '';
-      // si vienen como 'usuarios' anidados
       final usuarios = node['usuarios'] is Map ? node['usuarios'] as Map<String, dynamic> : node;
       final nombre = (usuarios['nombre'] ?? '')?.toString();
       final apellido = (usuarios['apellido'] ?? '')?.toString();
@@ -47,6 +48,8 @@ class SolicitudData {
     final nombreTutor = parseName(map['tutor'] as Map<String, dynamic>? ?? map['profesor'] as Map<String, dynamic>?);
     final nombreEstudiante = parseName(map['estudiante'] as Map<String, dynamic>?);
 
+    final mensaje = (map['mensaje'] ?? map['message'] ?? '')?.toString() ?? '';
+
     return SolicitudData(
       id: (map['id'] ?? '')?.toString() ?? '',
       estudianteId: estudianteId,
@@ -55,6 +58,7 @@ class SolicitudData {
       fechaSolicitud: fecha,
       nombreTutor: nombreTutor,
       nombreEstudiante: nombreEstudiante,
+      mensaje: mensaje,
     );
   }
 
@@ -67,6 +71,7 @@ class SolicitudData {
       'fecha_solicitud': fechaSolicitud.toIso8601String(),
       'nombre_tutor': nombreTutor,
       'nombre_estudiante': nombreEstudiante,
+      'mensaje': mensaje, // <-- nuevo
     };
   }
 
@@ -80,6 +85,7 @@ class SolicitudData {
     DateTime? fechaSolicitud,
     String? nombreTutor,
     String? nombreEstudiante,
+    String? mensaje, // <-- nuevo
   }) {
     return SolicitudData(
       id: id ?? this.id,
@@ -89,12 +95,13 @@ class SolicitudData {
       fechaSolicitud: fechaSolicitud ?? this.fechaSolicitud,
       nombreTutor: nombreTutor ?? this.nombreTutor,
       nombreEstudiante: nombreEstudiante ?? this.nombreEstudiante,
+      mensaje: mensaje ?? this.mensaje,
     );
   }
 
   @override
   String toString() {
-    return 'SolicitudData(id: $id, estudianteId: $estudianteId, profesorId: $profesorId, estado: $estado, fechaSolicitud: $fechaSolicitud, nombreTutor: $nombreTutor, nombreEstudiante: $nombreEstudiante)';
+    return 'SolicitudData(id: $id, estudianteId: $estudianteId, profesorId: $profesorId, estado: $estado, fechaSolicitud: $fechaSolicitud, nombreTutor: $nombreTutor, nombreEstudiante: $nombreEstudiante, mensaje: $mensaje)';
   }
 
   @override
@@ -107,12 +114,13 @@ class SolicitudData {
         other.estado == estado &&
         other.fechaSolicitud == fechaSolicitud &&
         other.nombreTutor == nombreTutor &&
-        other.nombreEstudiante == nombreEstudiante;
+        other.nombreEstudiante == nombreEstudiante &&
+        other.mensaje == mensaje;
   }
 
   @override
   int get hashCode {
-    return Object.hash(id, estudianteId, profesorId, estado, fechaSolicitud, nombreTutor, nombreEstudiante);
+    return Object.hash(id, estudianteId, profesorId, estado, fechaSolicitud, nombreTutor, nombreEstudiante, mensaje);
   }
 }
 

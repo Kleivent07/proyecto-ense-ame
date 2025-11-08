@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/custom_bottom_nav_bar.dart';
-import 'package:my_app/src/pages/Chat/chat_page.dart';
-import 'package:my_app/src/models/chat_model.dart';
+import 'package:my_app/src/pages/chat_page.dart';
+import '../models/chat_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ChatListPage extends StatefulWidget {

@@ -6,6 +6,23 @@ static String mSupabaseKey = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzd
 
 
 
+
+  // LOCAL (Android emulator)
+  // static const apiBase = 'http://10.0.2.2:3000';
+
+  // LOCAL (iOS simulator or web)
+  // static const apiBase = 'http://localhost:3000';
+
+  // NETWORK (device real)
+  // static const apiBase = 'http://192.168.100.12:3000';
+
+  // NGROK (public HTTPS)
+  // static const apiBase = 'https://abc123.ngrok.io';
+
+  // Elige la que corresponda y descomenta
+  static const apiBase = 'http://10.0.2.2:3000';
+
 }
-  // No guardar secretos en el cliente
+
+// No guardar secretos en el cliente
 //password: mQhiWQN8Oyz93qLQ

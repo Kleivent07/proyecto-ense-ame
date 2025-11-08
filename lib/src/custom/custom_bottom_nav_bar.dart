@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../custom/library.dart';
 import '../util/constants.dart';
+import '../pages/reunuiones_page.dart'; // <<< nueva import
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -24,8 +25,11 @@ class CustomBottomNavBar extends StatelessWidget {
       onTap: (index) {
         switch (index) {
           case 0:
-            // navegar a Reuniones (ajusta si necesitas)
-            //navigate(context, isEstudiante ? CustomPages.reunionesPage : CustomPages.reunionesProPage);
+            // Navegar a la página de Reuniones
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ReunuionesPage()),
+            );
             break;
           case 1:
             // navegar a Documentos (ajusta si necesitas)

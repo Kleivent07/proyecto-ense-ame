@@ -1,5 +1,9 @@
 // ignore_for_file: unused_element_parameter
 
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:my_app/src/custom/configuration.dart';
 import 'package:flutter/material.dart';
 import 'package:my_app/src/custom/no_teclado.dart';
 import 'package:my_app/src/util/constants.dart';
@@ -125,7 +129,124 @@ class _RegistroPageState extends State<RegistroPage> {
 
       if (result['ok'] == true) {
         _snack(result['message'] ?? 'Registro exitoso');
-        navigate(context, CustomPages.loginPage);
+
+        // Intentar login automático para obtener session/accessToken
+        try {
+          await usuarioService.login(
+            _correoController.text.trim().toLowerCase(),
+            _contrasenaController.text.trim(),
+          );
+
+          final session = Supabase.instance.client.auth.currentSession;
+          final token = session?.accessToken;
+          final userId = session?.user?.id;
+
+          if (token != null && userId != null) {
+            // Intento inicial de sincronizar con Zoom
+            final zoomResp = await _tryEnsureZoom(
+              userId: userId,
+              email: _correoController.text.trim().toLowerCase(),
+              firstName: _usuarioController.text.trim(),
+              lastName: _apellidoController.text.trim(),
+              token: token,
+            );
+
+            // Si ok = true -> todo bien (existe o se creó)
+            if (zoomResp != null && zoomResp['ok'] == true) {
+              // Si la creación devuelto estado 'pending' podrías avisar que hay que aceptar la invitación
+              final created = zoomResp['created'] == true ||
+                  zoomResp['created'] != null;
+              final exists = zoomResp['exists'] == true;
+              String msg = 'Sincronización con Zoom completada.';
+              if (created) {
+                final zoomResult = zoomResp['zoomResult'] ??
+                    zoomResp['created'];
+                final status = zoomResult != null
+                    ? (zoomResult['status'] ?? zoomResult['user']?['status'])
+                    : null;
+                if (status == 'pending') {
+                  msg =
+                      'Se envió una invitación a Zoom. Debes aceptar la invitación en tu correo para activar tu cuenta Zoom.';
+                } else {
+                  msg = 'Cuenta Zoom creada y sincronizada.';
+                }
+              } else if (exists) {
+                msg = 'Cuenta Zoom verificada.';
+              }
+              // Opcional: mostrar breve notificación
+              _snack(msg);
+              // Continuar flujo normal
+              navigate(context, CustomPages.loginPage);
+              return;
+            }
+
+            // Si llegamos aquí, hubo fallo en la sincronización -> mostrar diálogo con opciones
+            final errorMsg = (zoomResp != null && zoomResp['error'] != null)
+                ? 'Error: ${zoomResp['error']}'
+                : 'No se pudo sincronizar con Zoom.';
+
+            final action = await showDialog<String>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                title: const Text('Problema con Zoom'),
+                content: Text(
+                  '$errorMsg\n\n¿Quieres reintentar ahora, continuar sin cuenta Zoom o cancelar el registro?',
+                ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.of(ctx).pop('cancel'),
+                      child: const Text('Cancelar')),
+                  TextButton(
+                      onPressed: () => Navigator.of(ctx).pop('continue'),
+                      child: const Text('Continuar sin Zoom')),
+                  ElevatedButton(
+                      onPressed: () => Navigator.of(ctx).pop('retry'),
+                      child: const Text('Reintentar')),
+                ],
+              ),
+            );
+
+            if (action == 'retry') {
+              // Reintentar una vez
+              final zoomResp2 = await _tryEnsureZoom(
+                userId: userId,
+                email: _correoController.text.trim().toLowerCase(),
+                firstName: _usuarioController.text.trim(),
+                lastName: _apellidoController.text.trim(),
+                token: token,
+              );
+              if (zoomResp2 != null && zoomResp2['ok'] == true) {
+                _snack('Sincronización con Zoom completada en reintento.');
+                navigate(context, CustomPages.loginPage);
+                return;
+              } else {
+                // Si falla otra vez, dejar que el usuario decida: continuamos al login
+                _snack(
+                    'No fue posible sincronizar con Zoom. Puedes intentarlo luego desde tu perfil.');
+                navigate(context, CustomPages.loginPage);
+                return;
+              }
+            } else if (action == 'continue') {
+              // Permitir continuar sin Zoom
+              _snack('Registro completado. Puedes sincronizar tu cuenta con Zoom más tarde.');
+              navigate(context, CustomPages.loginPage);
+              return;
+            } else {
+              // Cancel -> no navegar, quedarse en registro para que usuario corrija (por ejemplo email)
+              return;
+            }
+          } else {
+            print('No se obtuvo session/token tras login automático.');
+            // Seguir con la navegación a login aunque no se haya sincronizado
+            navigate(context, CustomPages.loginPage);
+            return;
+          }
+        } catch (e) {
+          print('Login automático falló (no crítico): $e');
+          // No bloquear; ir a login
+          navigate(context, CustomPages.loginPage);
+          return;
+        }
       } else {
         // Traducimos posibles mensajes de error de Supabase
         String mensaje = result['message'] ?? 'Error al registrar usuario';
@@ -147,6 +268,45 @@ class _RegistroPageState extends State<RegistroPage> {
       } else {
         _snack('Ocurrió un error inesperado: $error');
       }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _tryEnsureZoom({
+    required String userId,
+    required String email,
+    required String firstName,
+    required String lastName,
+    required String token,
+  }) async {
+    final body = {
+      'user_id': userId,
+      'email': email,
+      'first_name': firstName,
+      'last_name': lastName,
+      'supabase_access_token': token,
+    };
+
+    try {
+      final resp = await http.post(
+        Uri.parse('${Configuration.apiBase}/ensure-zoom-user'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (resp.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(resp.body);
+        return data;
+      } else {
+        // No 200: devolver info para mostrar al usuario
+        return {
+          'ok': false,
+          'error': 'http_error',
+          'status': resp.statusCode,
+          'body': resp.body
+        };
+      }
+    } catch (e) {
+      return {'ok': false, 'error': 'request_failed', 'detail': e.toString()};
     }
   }
 
