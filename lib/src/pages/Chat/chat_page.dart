@@ -1,11 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:my_app/src/models/zoom_meeting_model.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../models/chat_model.dart';
+import '../../models/chat_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../custom/library.dart';
+import 'package:my_app/src/BackEnd/custom/library.dart';
 
 class ChatPage extends StatefulWidget {
   final String solicitudId;
@@ -252,18 +251,15 @@ class _ChatPageState extends State<ChatPage> {
     );
   }
 
-  // Extrae una URL desde respuestas variadas de Storage (String, Map, etc.)
   String? _extractUrlFromResponse(dynamic resp) {
     if (resp == null) return null;
     if (resp is String) return resp;
     try {
       if (resp is Map) {
-        // cubre varias posibles keys que usan diferentes versiones/SDKs
         if (resp.containsKey('signedURL')) return resp['signedURL']?.toString();
         if (resp.containsKey('signed_url')) return resp['signed_url']?.toString();
         if (resp.containsKey('signedUrl')) return resp['signedUrl']?.toString();
         if (resp.containsKey('url')) return resp['url']?.toString();
-        // si la respuesta tiene una forma tipo { data: { signedURL: '...' } }
         if (resp.containsKey('data') && resp['data'] is Map) {
           final d = resp['data'] as Map;
           if (d.containsKey('signedURL')) return d['signedURL']?.toString();
@@ -293,7 +289,6 @@ class _ChatPageState extends State<ChatPage> {
           icon: const Icon(Icons.chat_bubble_outline),
           tooltip: 'Ir a chats',
           onPressed: () {
-            // navega a la lista de chats usando tu helper central
             navigate(context, CustomPages.chatListPage);
           },
         ),
@@ -309,49 +304,6 @@ class _ChatPageState extends State<ChatPage> {
                 trailing: Text(_solicitud!['created_at']?.toString()?.split('T').first ?? ''),
               ),
             ),
-          ),
-          // FutureBuilder para mostrar información de la reunión (si existe)
-          FutureBuilder<List<Map<String, dynamic>>>(
-            future: ZoomMeetingModel().listByRoom(_roomId ?? ''),
-            builder: (context, snap) {
-              if (!snap.hasData || snap.data!.isEmpty) return const SizedBox.shrink();
-              final meet = snap.data!.first;
-              final topic = meet['topic'] ?? 'Reunión';
-              final start = meet['start_time']?.toString() ?? '';
-              final join = meet['join_url']?.toString() ?? '';
-              final startUrl = meet['start_url']?.toString() ?? '';
-              final isHost = (meet['created_by']?.toString() ?? '') == Supabase.instance.client.auth.currentUser?.id;
-              return Card(
-                color: Colors.green[50],
-                margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                child: ListTile(
-                  leading: const Icon(Icons.video_call, color: Colors.green),
-                  title: Text(topic),
-                  subtitle: Text(start),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (join.isNotEmpty)
-                        TextButton(
-                          child: const Text('Unirse'),
-                          onPressed: () async {
-                            final uri = Uri.parse(join);
-                            if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-                          },
-                        ),
-                      if (isHost && startUrl.isNotEmpty)
-                        TextButton(
-                          child: const Text('Iniciar'),
-                          onPressed: () async {
-                            final uri = Uri.parse(startUrl);
-                            if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-                          },
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
           ),
           Expanded(
             child: ListView.builder(

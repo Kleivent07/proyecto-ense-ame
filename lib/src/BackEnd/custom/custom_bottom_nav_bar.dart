@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
-import '../custom/library.dart';
-import '../util/constants.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
+import 'package:my_app/src/pages/Reuniones/reuniones_home_page.dart';
+
+import 'library.dart';
+
 
 class CustomBottomNavBar extends StatelessWidget {
   final int selectedIndex;
@@ -24,12 +27,15 @@ class CustomBottomNavBar extends StatelessWidget {
       onTap: (index) {
         switch (index) {
           case 0:
-            // navegar a Reuniones (ajusta si necesitas)
-            //navigate(context, isEstudiante ? CustomPages.reunionesPage : CustomPages.reunionesProPage);
+            // Abrir Reuniones desde el primer botón
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const ReunionesHomePage()),
+            );
             break;
           case 1:
             // navegar a Documentos (ajusta si necesitas)
-            //navigate(context, isEstudiante ? CustomPages.documentosPage : CustomPages.documentosProPage);
+            // navigate(context, isEstudiante ? CustomPages.documentosPage : CustomPages.documentosProPage);
             break;
           case 2:
             if (selectedIndex == 2 && onReloadHome != null) {
@@ -56,7 +62,7 @@ class CustomBottomNavBar extends StatelessWidget {
       },
       type: BottomNavigationBarType.fixed,
       items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.group), label: 'Reuniones'),
+        BottomNavigationBarItem(icon: Icon(Icons.video_call), label: 'Reuniones'),
         BottomNavigationBarItem(icon: Icon(Icons.description), label: 'Documentos'),
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
         BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),

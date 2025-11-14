@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../custom/solicitud_data.dart';
-import '../models/solicitud_model.dart';
-import '../util/constants.dart';
+import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
+import '../../models/solicitud_model.dart';
+import '../../BackEnd/util/constants.dart';
 
 // imports añadidos
-import '../models/chat_model.dart';
-import 'chat_page.dart';
+import '../../models/chat_model.dart';
+import '../Chat/chat_page.dart';
 
 class ListaSolicitudesPage extends StatefulWidget {
   final List<SolicitudData> solicitudes;
@@ -30,7 +30,15 @@ class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
   @override
   void initState() {
     super.initState();
-    solicitudes = widget.solicitudes;
+    // Ordenar: primeras las más recientes; dejar solicitudes aceptadas al final.
+    solicitudes = List<SolicitudData>.from(widget.solicitudes);
+    solicitudes.sort((a, b) {
+      // si uno está aceptada y el otro no, aceptada va después
+      if (a.estado == 'aceptada' && b.estado != 'aceptada') return 1;
+      if (b.estado == 'aceptada' && a.estado != 'aceptada') return -1;
+      // si ambos iguales en aceptación, ordenar por fecha desc
+      return b.fechaSolicitud.compareTo(a.fechaSolicitud);
+    });
   }
 
   Future<void> actualizarSolicitudEstado(SolicitudData solicitud, String nuevoEstado) async {
@@ -103,39 +111,45 @@ class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
 
                 final fecha = DateFormat('dd/MM/yyyy HH:mm').format(solicitud.fechaSolicitud);
 
+                final isAccepted = solicitud.estado == 'aceptada';
+                final tileColor = isAccepted ? Colors.grey.shade200 : null;
+                final textStyle = isAccepted
+                    ? TextStyle(color: Colors.grey.shade700.withOpacity(0.7))
+                    : const TextStyle();
+
                 return Card(
+                  color: tileColor,
                   margin: const EdgeInsets.only(bottom: 12),
                   child: ListTile(
                     title: Text(
                       'Tutoría con $displayName',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      style: TextStyle(fontWeight: FontWeight.bold).merge(textStyle),
                     ),
-                    subtitle: Text('Estado: ${solicitud.estado}\nFecha: $fecha'),
+                    subtitle: Text('Estado: ${solicitud.estado}\nFecha: $fecha\n${solicitud.mensaje.isNotEmpty ? '\nMensaje: ${solicitud.mensaje}' : ''}', style: textStyle),
                     isThreeLine: true,
+                    // deshabilitar acciones de aceptar/rechazar si ya aceptada
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        // boton aceptar/rechazar (solo para profesor)
+                        // botones aceptar/rechazar solo para profesores (igual que antes)
                         if (widget.esProfesor) ...[
                           IconButton(
-                            icon: const Icon(Icons.check, color: Colors.green),
-                            onPressed: solicitud.estado != 'aceptada'
-                                ? () => actualizarSolicitudEstado(solicitud, 'aceptada')
-                                : null,
+                            icon: Icon(Icons.check, color: isAccepted ? Colors.grey : Colors.green),
+                            onPressed: !isAccepted ? () => actualizarSolicitudEstado(solicitud, 'aceptada') : null,
                           ),
                           IconButton(
-                            icon: const Icon(Icons.close, color: Colors.red),
-                            onPressed: solicitud.estado != 'rechazada'
-                                ? () => actualizarSolicitudEstado(solicitud, 'rechazada')
-                                : null,
+                            icon: Icon(Icons.close, color: solicitud.estado == 'rechazada' ? Colors.grey : Colors.red),
+                            onPressed: solicitud.estado != 'rechazada' ? () => actualizarSolicitudEstado(solicitud, 'rechazada') : null,
                           ),
                         ],
-                        // boton chat (siempre visible): abrir chat del estudiante/profesor
-                        IconButton(
-                          icon: const Icon(Icons.chat_bubble_outline),
-                          tooltip: 'Abrir chat',
-                          onPressed: () => _openChat(solicitud),
-                        ),
+
+                        // Mostrar botón de chat SOLO si la solicitud está aceptada
+                        if (solicitud.estado == 'aceptada')
+                          IconButton(
+                            icon: const Icon(Icons.chat_bubble_outline),
+                            tooltip: 'Abrir chat',
+                            onPressed: () => _openChat(solicitud),
+                          ),
                       ],
                     ),
                   ),

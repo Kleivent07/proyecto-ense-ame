@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
 import 'package:my_app/src/pages/Estudiantes/perfil_tutor_page.dart';
-import 'package:my_app/src/util/constants.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class BuscarProfesoresPage extends StatefulWidget {

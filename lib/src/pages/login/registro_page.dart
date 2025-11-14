@@ -1,9 +1,13 @@
 // ignore_for_file: unused_element_parameter
 
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:my_app/src/BackEnd/custom/configuration.dart';
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/no_teclado.dart';
-import 'package:my_app/src/util/constants.dart';
-import 'package:my_app/src/custom/library.dart';
+import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
+import 'package:my_app/src/BackEnd/custom/library.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
 
 class RegistroPage extends StatefulWidget {
@@ -125,7 +129,34 @@ class _RegistroPageState extends State<RegistroPage> {
 
       if (result['ok'] == true) {
         _snack(result['message'] ?? 'Registro exitoso');
-        navigate(context, CustomPages.loginPage);
+
+        // Intentar login automático para obtener session/accessToken
+        try {
+          await usuarioService.login(
+            _correoController.text.trim().toLowerCase(),
+            _contrasenaController.text.trim(),
+          );
+
+          final session = Supabase.instance.client.auth.currentSession;
+          final token = session?.accessToken;
+          final userId = session?.user?.id;
+
+          if (token != null && userId != null) {
+            // Se omite la sincronización con Zoom (removida). Continuar al login.
+            navigate(context, CustomPages.loginPage);
+            return;
+          } else {
+            print('No se obtuvo session/token tras login automático.');
+            // Seguir con la navegación a login aunque no se haya sincronizado
+            navigate(context, CustomPages.loginPage);
+            return;
+          }
+        } catch (e) {
+          print('Login automático falló (no crítico): $e');
+          // No bloquear; ir a login
+          navigate(context, CustomPages.loginPage);
+          return;
+        }
       } else {
         // Traducimos posibles mensajes de error de Supabase
         String mensaje = result['message'] ?? 'Error al registrar usuario';
@@ -147,6 +178,45 @@ class _RegistroPageState extends State<RegistroPage> {
       } else {
         _snack('Ocurrió un error inesperado: $error');
       }
+    }
+  }
+
+  Future<Map<String, dynamic>?> _tryEnsureZoom({
+    required String userId,
+    required String email,
+    required String firstName,
+    required String lastName,
+    required String token,
+  }) async {
+    final body = {
+      'user_id': userId,
+      'email': email,
+      'first_name': firstName,
+      'last_name': lastName,
+      'supabase_access_token': token,
+    };
+
+    try {
+      final resp = await http.post(
+        Uri.parse('${Configuration.apiBase}/ensure-zoom-user'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      );
+
+      if (resp.statusCode == 200) {
+        final Map<String, dynamic> data = jsonDecode(resp.body);
+        return data;
+      } else {
+        // No 200: devolver info para mostrar al usuario
+        return {
+          'ok': false,
+          'error': 'http_error',
+          'status': resp.statusCode,
+          'body': resp.body
+        };
+      }
+    } catch (e) {
+      return {'ok': false, 'error': 'request_failed', 'detail': e.toString()};
     }
   }
 

@@ -1,23 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/custom_bottom_nav_bar.dart';
-import 'package:my_app/src/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/custom/custom_bottom_nav_bar.dart';
+import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
 import 'package:my_app/src/pages/Estudiantes/lista_solicitud_estudiante_page.dart';
 import 'package:my_app/src/pages/Profesores/lista_solicitud_profesor_page.dart';
-import 'package:my_app/src/pages/lista_solicitudes_page.dart';
-import 'package:my_app/src/util/constants.dart';
+import 'package:my_app/src/pages/Editar/lista_solicitudes_page.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:my_app/src/custom/refrescar.dart';
-import 'package:my_app/src/custom/library.dart';
+import 'package:my_app/src/BackEnd/custom/refrescar.dart';
+import 'package:my_app/src/BackEnd/custom/library.dart';
 
 import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:my_app/src/models/estudiantes_model.dart';
 import 'package:my_app/src/models/profesores_model.dart';
-import 'package:my_app/src/pages/editar_perfil_page.dart';
+import 'package:my_app/src/pages/Editar/editar_perfil_page.dart';
 import 'package:my_app/src/models/solicitud_model.dart';
-import 'package:my_app/src/custom/solicitud_data.dart';
+import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 
 class PerfilPage extends StatefulWidget {
   const PerfilPage({Key? key}) : super(key: key);

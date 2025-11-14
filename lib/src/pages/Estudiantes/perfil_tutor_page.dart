@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/models/profesores_model.dart';
-import 'package:my_app/src/util/constants.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:my_app/src/models/solicitud_model.dart';
-import 'package:my_app/src/custom/solicitud_data.dart';
+import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PerfilTutorPage extends StatefulWidget {
@@ -42,20 +42,46 @@ class _PerfilTutorPageState extends State<PerfilTutorPage> {
   }
 
   Future<void> enviarSolicitud(String profesorId) async {
-    try {
-      final estudianteId = Supabase.instance.client.auth.currentUser?.id;
-      if (estudianteId == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo obtener tu ID de usuario.')),
-        );
-        return;
-      }
+    final estudianteId = Supabase.instance.client.auth.currentUser?.id;
+    if (estudianteId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No se pudo obtener tu ID de usuario.')),
+      );
+      return;
+    }
 
+    // show dialog to enter message (optional)
+    final TextEditingController messageCtrl = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Mensaje para la solicitud (opcional)'),
+        content: TextField(
+          controller: messageCtrl,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: 'Escribe un mensaje corto (ej: Hola, me gustaría tener tutorías para la clase X)...',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Cancelar')),
+          ElevatedButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text('Enviar')),
+        ],
+      ),
+    );
+
+    if (result != true) {
+      // user cancelled
+      return;
+    }
+
+    try {
       final nuevaSolicitud = SolicitudData(
         estudianteId: estudianteId,
         profesorId: profesorId,
         estado: 'pendiente',
         fechaSolicitud: DateTime.now(),
+        mensaje: messageCtrl.text.trim(),
       );
 
       await solicitudModel.crearSolicitud(nuevaSolicitud);
@@ -71,6 +97,8 @@ class _PerfilTutorPageState extends State<PerfilTutorPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al enviar solicitud: $e')),
       );
+    } finally {
+      messageCtrl.dispose();
     }
   }
 

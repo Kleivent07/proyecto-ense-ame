@@ -1,8 +1,8 @@
 // ignore_for_file: unnecessary_null_comparison, unnecessary_type_check
 import 'dart:typed_data';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:my_app/src/models/estudiantes_model.dart';
 import 'package:my_app/src/models/profesores_model.dart';
-import 'package:my_app/src/util/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 

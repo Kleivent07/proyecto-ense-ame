@@ -1,12 +1,63 @@
+import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../custom/solicitud_data.dart';
+
 
 class SolicitudModel {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   Future<void> crearSolicitud(SolicitudData solicitud) async {
     try {
-      await _supabase.from('solicitudes_tutorias').insert(solicitud.toMap());
+      final map = solicitud.toMap();
+
+      // Columnas reales en la tabla según lo que pegaste:
+      final allowedColumns = <String>{
+        'id',
+        'estudiante_id',
+        'profesor_id',
+        'estado',
+        'mensaje',
+        'fecha_solicitud',
+        'fecha_respuesta',
+        'nombre_estudiante',
+      };
+
+      // Filtrar solo las claves que existen en la tabla
+      final filtered = <String, dynamic>{};
+      for (final entry in map.entries) {
+        final key = entry.key;
+        final value = entry.value;
+
+        // Si la key no está permitida, saltarla
+        if (!allowedColumns.contains(key)) continue;
+
+        // Evitar insertar id vacío (Postgres falla al convertir '' a uuid)
+        if (key == 'id') {
+          final s = value?.toString() ?? '';
+          if (s.trim().isEmpty) {
+            // saltar la clave 'id' para que la BD asigne el id por defecto
+            continue;
+          }
+        }
+
+        // Evitar insertar estudiante_id/profesor_id vacíos (también UUID)
+        if ((key == 'estudiante_id' || key == 'profesor_id')) {
+          final s = value?.toString() ?? '';
+          if (s.trim().isEmpty) {
+            // Si faltan estos ids, mejor no insertarlos y fallar lógicamente en la app antes
+            continue;
+          }
+        }
+
+        filtered[key] = value;
+      }
+
+      // Asegurar fecha_solicitud si no viene
+      filtered.putIfAbsent('fecha_solicitud', () => DateTime.now().toUtc().toIso8601String());
+
+      // Debug temporal (opcional): muestra qué se intenta insertar
+      // print('DEBUG crearSolicitud filtered payload: $filtered');
+
+      await _supabase.from('solicitudes_tutorias').insert([filtered]);
     } catch (e) {
       throw Exception('Error al crear solicitud: $e');
     }
@@ -18,11 +69,11 @@ class SolicitudModel {
       final data = await _supabase
           .from('solicitudes_tutorias')
           .select('*, tutor:profesor_id(usuarios(*))')
-          .eq('profesor_id', profesorId);
+          .eq('profesor_id', profesorId)
+          .order('fecha_solicitud', ascending: false);
 
       List<SolicitudData> solicitudes = [];
       for (var s in data) {
-        // Obtener nombre del estudiante separado
         final estudianteData = await _supabase
             .from('usuarios')
             .select('nombre, apellido')
@@ -44,11 +95,11 @@ class SolicitudModel {
       final data = await _supabase
           .from('solicitudes_tutorias')
           .select('*, tutor:profesor_id(usuarios(*))')
-          .eq('estudiante_id', estudianteId);
+          .eq('estudiante_id', estudianteId)
+          .order('fecha_solicitud', ascending: false);
 
       List<SolicitudData> solicitudes = [];
       for (var s in data) {
-        // Obtener nombre del estudiante (opcional, ya lo tenemos)
         final estudianteData = await _supabase
             .from('usuarios')
             .select('nombre, apellido')
