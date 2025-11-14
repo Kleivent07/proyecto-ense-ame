@@ -3,11 +3,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:my_app/src/custom/configuration.dart';
+import 'package:my_app/src/BackEnd/custom/configuration.dart';
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/no_teclado.dart';
-import 'package:my_app/src/util/constants.dart';
-import 'package:my_app/src/custom/library.dart';
+import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
+import 'package:my_app/src/BackEnd/custom/library.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
 
 class RegistroPage extends StatefulWidget {

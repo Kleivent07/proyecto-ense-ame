@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/custom_bottom_nav_bar.dart';
-import 'package:my_app/src/custom/no_teclado.dart';
-import 'package:my_app/src/custom/refrescar.dart';
+import 'package:my_app/src/BackEnd/custom/custom_bottom_nav_bar.dart';
+import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/custom/refrescar.dart';
 import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:my_app/src/pages/Editar/editar_perfil_page.dart';
 import 'package:my_app/src/pages/notificaciones.dart';
-import 'package:my_app/src/util/constants.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 
 class HomePROPage extends StatefulWidget {
   const HomePROPage({super.key});

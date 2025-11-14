@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:my_app/src/custom/no_teclado.dart';
-import 'package:my_app/src/util/constants.dart';
+import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:image_picker/image_picker.dart';
@@ -10,8 +10,8 @@ import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:my_app/src/models/profesores_model.dart';
 import 'package:my_app/src/models/estudiantes_model.dart';
 
-import 'package:my_app/src/util/lista_carreras.dart';
-import 'package:my_app/src/util/lista_materias.dart';
+import 'package:my_app/src/BackEnd/util/lista_carreras.dart';
+import 'package:my_app/src/BackEnd/util/lista_materias.dart';
 
 class EditarPerfilPage extends StatefulWidget {
   final Map<String, dynamic> perfil;

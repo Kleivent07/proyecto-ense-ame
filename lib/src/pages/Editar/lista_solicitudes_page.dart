@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import '../../custom/solicitud_data.dart';
+import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 import '../../models/solicitud_model.dart';
-import '../../util/constants.dart';
+import '../../BackEnd/util/constants.dart';
 
 // imports añadidos
 import '../../models/chat_model.dart';

@@ -1,5 +1,6 @@
+import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../custom/solicitud_data.dart';
+
 
 class SolicitudModel {
   final SupabaseClient _supabase = Supabase.instance.client;

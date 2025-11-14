@@ -1,7 +1,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:my_app/src/custom/library.dart';
+import 'package:my_app/src/BackEnd/custom/library.dart';
+
 
 class Constants {
 static const bucketAvatar = 'imagenes_usuarios';

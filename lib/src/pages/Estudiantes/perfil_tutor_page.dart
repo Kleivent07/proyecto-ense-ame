@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/models/profesores_model.dart';
-import 'package:my_app/src/util/constants.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:my_app/src/models/solicitud_model.dart';
-import 'package:my_app/src/custom/solicitud_data.dart';
+import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class PerfilTutorPage extends StatefulWidget {
