@@ -69,20 +69,24 @@ class _ListaSolicitudesPageState extends State<ListaSolicitudesPage> {
     }
   }
 
-  // Nuevo helper: abrir chat (obtiene/crea room y navega)
+  // Actualizar helper: abrir chat usando el nuevo sistema
   Future<void> _openChat(SolicitudData solicitud) async {
     final sm = ScaffoldMessenger.of(context);
-    sm.showSnackBar(const SnackBar(content: Text('Abriendo chat...')));
+    
+    // Verificar acceso usando el nuevo método
+    final hasAccess = await chatModel.hasAccessToSolicitud(solicitud.id);
+    if (!hasAccess) {
+      sm.showSnackBar(const SnackBar(content: Text('No tienes acceso al chat o la solicitud no está aceptada.')));
+      return;
+    }
+
     try {
-      final roomId = await chatModel.ensureAccessAndGetRoom(solicitud.id);
-      if (roomId == null) {
-        sm.showSnackBar(const SnackBar(content: Text('No tienes acceso al chat o la solicitud no está aceptada.')));
-        return;
-      }
-      // Ajusta el constructor de ChatPage si es distinto (aquí paso solicitudId y roomId)
+      sm.showSnackBar(const SnackBar(content: Text('Abriendo chat...')));
+      
+      // Navegar directamente con solicitudId solamente (sin roomId)
       Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ChatPage(solicitudId: solicitud.id, roomId: roomId),
+          builder: (_) => ChatPage(solicitudId: solicitud.id),
         ),
       );
     } catch (e) {

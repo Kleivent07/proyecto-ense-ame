@@ -6,11 +6,10 @@ plugins {
 
 android {
     namespace = "com.example.my_app"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = flutter.ndkVersion
+    compileSdk = 36
 
     compileOptions {
-        // ✅ Sintaxis correcta en Kotlin Script
+        // 🔧 DESUGARING HABILITADO (requerido por flutter_local_notifications)
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -23,15 +22,33 @@ android {
     defaultConfig {
         applicationId = "com.example.my_app"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+        
+        // 🔧 MULTIDEX SUPPORT
+        multiDexEnabled = true
     }
 
     buildTypes {
-        getByName("release") {
+        release {
+            isMinifyEnabled = false
+            isShrinkResources = false
+            isDebuggable = false
             signingConfig = signingConfigs.getByName("debug")
         }
+        debug {
+            isMinifyEnabled = false
+            isShrinkResources = false
+            isDebuggable = true
+        }
+    }
+    
+    // 🔧 CONFIGURACIONES ADICIONALES PARA RESOLVER CONFLICTOS
+    packagingOptions {
+        pickFirst("**/libc++_shared.so")
+        pickFirst("**/libjsc.so")
+        pickFirst("**/libfbjni.so")
     }
 }
 
@@ -40,7 +57,10 @@ flutter {
 }
 
 dependencies {
-    // ✅ No necesitas $kotlin_version, lo definimos directamente
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.24")
+    // 🔧 VERSIÓN EXACTA QUE PIDEN LAS DEPENDENCIAS
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    
+    // Dependencias actualizadas
+    implementation("org.jetbrains.kotlin:kotlin-stdlib:2.1.0")
+    implementation("androidx.multidex:multidex:2.0.1")
 }

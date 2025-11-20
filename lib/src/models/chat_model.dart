@@ -6,716 +6,488 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../BackEnd/custom/configuration.dart';
+import '../BackEnd/util/constants.dart'; // ✨ IMPORTAR CONSTANTES
 
 class ChatModel {
   final SupabaseClient _client = Supabase.instance.client;
   Timer? _pollTimer;
   String? _lastCreatedAt;
-  String? _currentRoomId;
+  String? _currentSolicitudId;
 
-  dynamic _unwrap(dynamic res) {
-    if (res == null) return null;
-    try {
-      final dyn = (res as dynamic).data;
-      if (dyn != null) return dyn;
-    } catch (_) {}
-    return res;
+  // Helper para conversión segura de tipos
+  Map<String, dynamic> _safeMap(dynamic data) {
+    if (data == null) return {};
+    if (data is Map<String, dynamic>) return data;
+    if (data is Map) return Map<String, dynamic>.from(data);
+    return {};
   }
 
-  // Extrae una URL desde respuestas variadas de Storage (String, Map, etc.)
-  String? _extractUrlFromResponse(dynamic resp) {
-    if (resp == null) return null;
-    if (resp is String) return resp;
-    try {
-      if (resp is Map) {
-        if (resp.containsKey('signedURL')) return resp['signedURL']?.toString();
-        if (resp.containsKey('signed_url')) return resp['signed_url']?.toString();
-        if (resp.containsKey('signedUrl')) return resp['signedUrl']?.toString();
-        if (resp.containsKey('url')) return resp['url']?.toString();
-        if (resp.containsKey('data') && resp['data'] is Map) {
-          final d = resp['data'] as Map;
-          if (d.containsKey('signedURL')) return d['signedURL']?.toString();
-          if (d.containsKey('url')) return d['url']?.toString();
-        }
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  // Devuelve room.id si ya existe (no crea)
-  Future<String?> getRoomIfExists(String solicitudId) async {
-    try {
-      final raw = await _client.from('rooms').select('id').eq('solicitud_id', solicitudId).maybeSingle();
-      final data = _unwrap(raw);
-      if (data == null) return null;
-      if (data is Map && data['id'] != null) return data['id'] as String;
-      if (data is List && data.isNotEmpty && data.first['id'] != null) return data.first['id'] as String;
-      return null;
-    } catch (e, st) {
-      print('[CHAT] getRoomIfExists ERROR: $e');
-      print(st);
-      return null;
+  List<Map<String, dynamic>> _safeMapList(dynamic data) {
+    if (data == null) return [];
+    if (data is List) {
+      return data.map((item) => _safeMap(item)).toList();
     }
+    return [];
   }
 
-  // Crea room para la solicitud (intenta insertar y devuelve id)
-  Future<String?> createRoomForSolicitud(String solicitudId) async {
-    try {
-      final raw = await _client.from('rooms').insert({'solicitud_id': solicitudId}).select();
-      final data = _unwrap(raw);
-      if (data is List && data.isNotEmpty) {
-        final created = Map<String, dynamic>.from(data.first);
-        return created['id'] as String?;
-      }
-      if (data is Map && data['id'] != null) return data['id'] as String?;
-      return null;
-    } catch (e, st) {
-      print('[CHAT] createRoom ERROR: $e');
-      print(st);
-      rethrow;
-    }
-  }
-
-  // Verifica acceso y devuelve roomId (crea room si hace falta)
-  Future<String?> ensureAccessAndGetRoom(String solicitudId) async {
+  // Verificar acceso a la solicitud
+  Future<bool> hasAccessToSolicitud(String solicitudId) async {
     final user = _client.auth.currentUser;
-    if (user == null) {
-      print('[CHAT] ensureAccessAndGetRoom: usuario no autenticado');
-      return null;
-    }
+    if (user == null) return false;
 
     try {
-      final solRaw = await _client
+      final response = await _client
           .from('solicitudes_tutorias')
           .select('id, estado, estudiante_id, profesor_id')
           .eq('id', solicitudId)
+          .eq('estado', 'aceptada')
           .maybeSingle();
 
-      final solData = _unwrap(solRaw);
-      final sol = (solData is Map) ? Map<String, dynamic>.from(solData) : null;
-      if (sol == null) {
-        print('[CHAT] ensureAccessAndGetRoom: solicitud no encontrada $solicitudId');
-        return null;
-      }
-
-      final estado = sol['estado'];
-      final estudianteId = sol['estudiante_id'];
-      final profesorId = sol['profesor_id'];
-
-      final isParticipant = (user.id == estudianteId || user.id == profesorId);
-      final isAccepted = (estado == 'aceptada');
-
-      print('[CHAT] ensureAccessAndGetRoom: user=${user.id} estudiante=$estudianteId profesor=$profesorId estado=$estado isParticipant=$isParticipant isAccepted=$isAccepted');
-
-      if (!(isParticipant && isAccepted)) {
-        print('[CHAT] ensureAccessAndGetRoom: acceso denegado por rol o estado');
-        return null;
-      }
-
-      // Buscar room existente
-      final roomRaw = await _client.from('rooms').select('id').eq('solicitud_id', solicitudId).maybeSingle();
-      final roomData = _unwrap(roomRaw);
-      if (roomData != null) {
-        if (roomData is Map && roomData['id'] != null) {
-          return roomData['id'] as String;
-        }
-        if (roomData is List && roomData.isNotEmpty && roomData.first['id'] != null) {
-          return roomData.first['id'] as String;
-        }
-      }
-
-      // Crear room si no existe (pedimos la fila creada con .select())
-      final insertRaw = await _client.from('rooms').insert({'solicitud_id': solicitudId}).select();
-      final insertData = _unwrap(insertRaw);
-      if (insertData is List && insertData.isNotEmpty) {
-        final created = Map<String, dynamic>.from(insertData.first);
-        return created['id'] as String?;
-      }
-      if (insertData is Map && insertData['id'] != null) {
-        return insertData['id'] as String;
-      }
-    } catch (e, st) {
-      print('[CHAT] ensureAccessAndGetRoom ERROR: $e');
-      print(st);
-      return null;
+      if (response == null) return false;
+      
+      final data = _safeMap(response);
+      final estudiante = data['estudiante_id'];
+      final profesor = data['profesor_id'];
+      
+      return (user.id == estudiante || user.id == profesor);
+    } catch (e) {
+      print('[CHAT] Error verificando acceso: $e');
+      return false;
     }
-    return null;
   }
 
-  // Carga mensajes (orden cronológico)
-  Future<List<Map<String, dynamic>>> loadMessages(String roomId, {int limit = 50}) async {
+  // Obtener nombre del usuario
+  Future<String> _getUserName(String userId) async {
     try {
-      final raw = await _client
-          .from('messages')
-          .select()
-          .eq('room_id', roomId)
-          .order('created_at', ascending: false)
+      final response = await _client
+          .from('usuarios')
+          .select('nombre, apellido')
+          .eq('id', userId)
+          .maybeSingle();
+      
+      if (response != null) {
+        final data = _safeMap(response);
+        final nombre = data['nombre']?.toString() ?? '';
+        final apellido = data['apellido']?.toString() ?? '';
+        return '$nombre $apellido'.trim();
+      }
+    } catch (e) {
+      print('[CHAT] Error obteniendo nombre de usuario: $e');
+    }
+    return 'Usuario';
+  }
+
+  // Cargar mensajes de una solicitud con nombres de usuarios
+  Future<List<Map<String, dynamic>>> loadMessages(String solicitudId, {int limit = 50}) async {
+    try {
+      final response = await _client
+          .from('chat_messages')
+          .select('*')
+          .eq('solicitud_id', solicitudId)
+          .order('created_at', ascending: true)
           .limit(limit);
 
-      final data = _unwrap(raw);
-      if (data == null) return [];
-      final list = (data is List)
-          ? (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()
-          : (data is Map ? [Map<String, dynamic>.from(data)] : <Map<String, dynamic>>[]);
-      return list.reversed.toList();
-    } catch (e, st) {
-      print('[CHAT] loadMessages ERROR: $e');
-      print(st);
+      final messages = _safeMapList(response);
+      
+      // Enriquecer mensajes con nombres de usuarios
+      for (var message in messages) {
+        final senderId = message['sender_id']?.toString();
+        if (senderId != null && senderId.isNotEmpty) {
+          final userName = await _getUserName(senderId);
+          message['sender_name'] = userName;
+        }
+      }
+      
+      return messages;
+    } catch (e) {
+      print('[CHAT] Error cargando mensajes: $e');
       return [];
     }
   }
 
-  // Start polling: NO emite el backlog (porque loadMessages ya cargó inicialmente)
-  Future<void> startPollingBySolicitud(String solicitudId, void Function(Map<String, dynamic>) onNewMessage,
+  // Enviar mensaje
+  Future<bool> sendMessage(String solicitudId, String content, {List<Map<String, dynamic>>? attachments}) async {
+    final user = _client.auth.currentUser;
+    if (user == null) {
+      print('[CHAT] Usuario no autenticado');
+      return false;
+    }
+
+    // Verificar acceso primero
+    if (!await hasAccessToSolicitud(solicitudId)) {
+      print('[CHAT] Sin acceso a la solicitud');
+      return false;
+    }
+
+    try {
+      final messageData = {
+        'solicitud_id': solicitudId,
+        'sender_id': user.id,
+        'content': content,
+        'attachments': attachments ?? [],
+      };
+
+      final response = await _client
+          .from('chat_messages')
+          .insert(messageData)
+          .select()
+          .single();
+
+      final responseData = _safeMap(response);
+      print('[CHAT] Mensaje enviado exitosamente: ${responseData['id']}');
+      return true;
+    } catch (e) {
+      print('[CHAT] Error enviando mensaje: $e');
+      return false;
+    }
+  }
+
+  // Crear mensaje inicial con el contenido de la solicitud
+  Future<bool> createInitialMessage(String solicitudId) async {
+    try {
+      // Verificar si ya existe mensaje inicial
+      final existing = await _client
+          .from('chat_messages')
+          .select('id')
+          .eq('solicitud_id', solicitudId)
+          .limit(1);
+          
+      final existingList = _safeMapList(existing);
+      if (existingList.isNotEmpty) {
+        return true; // Ya existe mensaje inicial
+      }
+      
+      // Obtener datos de la solicitud
+      final solicitudData = await loadSolicitudData(solicitudId);
+      if (solicitudData == null || solicitudData.isEmpty) return false;
+      
+      final mensaje = solicitudData['mensaje']?.toString() ?? '';
+      if (mensaje.isEmpty) return true; // No hay mensaje que mostrar
+      
+      // Crear mensaje inicial del estudiante
+      final estudianteId = solicitudData['estudiante_id']?.toString();
+      if (estudianteId == null || estudianteId.isEmpty) return false;
+      
+      final messageData = {
+        'solicitud_id': solicitudId,
+        'sender_id': estudianteId,
+        'content': '📝 Solicitud inicial: $mensaje',
+        'attachments': [],
+        'created_at': solicitudData['fecha_solicitud'], // Usar fecha original
+      };
+
+      await _client
+          .from('chat_messages')
+          .insert(messageData);
+          
+      print('[CHAT] Mensaje inicial creado para solicitud $solicitudId');
+      return true;
+    } catch (e) {
+      print('[CHAT] Error creando mensaje inicial: $e');
+      return false;
+    }
+  }
+
+  // Listar conversaciones con nombres
+  Future<List<Map<String, dynamic>>> listConversations() async {
+    final user = _client.auth.currentUser;
+    if (user == null) return [];
+
+    try {
+      final solicitudesResponse = await _client
+          .from('solicitudes_tutorias')
+          .select('id, mensaje, estado, estudiante_id, profesor_id, fecha_solicitud, nombre_estudiante')
+          .eq('estado', 'aceptada')
+          .or('estudiante_id.eq.${user.id},profesor_id.eq.${user.id}')
+          .order('fecha_solicitud', ascending: false);
+
+      final solicitudes = _safeMapList(solicitudesResponse);
+      final conversations = <Map<String, dynamic>>[];
+      
+      for (final solicitudData in solicitudes) {
+        final solicitud = _safeMap(solicitudData);
+        
+        // Obtener nombres de los participantes
+        final estudianteId = solicitud['estudiante_id']?.toString() ?? '';
+        final profesorId = solicitud['profesor_id']?.toString() ?? '';
+        
+        String otherUserName = 'Usuario';
+        if (user.id == estudianteId && profesorId.isNotEmpty) {
+          // Soy estudiante, buscar nombre del profesor
+          otherUserName = await _getUserName(profesorId);
+        } else if (user.id == profesorId && estudianteId.isNotEmpty) {
+          // Soy profesor, buscar nombre del estudiante
+          otherUserName = await _getUserName(estudianteId);
+        }
+        
+        // Obtener el último mensaje si existe
+        final lastMessageResponse = await _client
+            .from('chat_messages')
+            .select('id, content, created_at, sender_id')
+            .eq('solicitud_id', solicitud['id'])
+            .order('created_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        final lastMessage = lastMessageResponse != null ? _safeMap(lastMessageResponse) : null;
+
+        conversations.add({
+          'solicitud': {
+            ...solicitud,
+            'other_user_name': otherUserName,
+          },
+          'last_message': lastMessage,
+          'room_id': null,
+        });
+      }
+
+      return conversations;
+    } catch (e) {
+      print('[CHAT] Error listando conversaciones: $e');
+      return [];
+    }
+  }
+
+  // Cargar datos de la solicitud
+  Future<Map<String, dynamic>?> loadSolicitudData(String solicitudId) async {
+    try {
+      final response = await _client
+          .from('solicitudes_tutorias')
+          .select('id, estado, estudiante_id, profesor_id, mensaje, fecha_solicitud, nombre_estudiante')
+          .eq('id', solicitudId)
+          .maybeSingle();
+
+      return response != null ? _safeMap(response) : null;
+    } catch (e) {
+      print('[CHAT] Error cargando solicitud: $e');
+      return null;
+    }
+  }
+
+  // Polling para nuevos mensajes
+  Future<void> startPolling(String solicitudId, void Function(Map<String, dynamic>) onNewMessage,
       {Duration interval = const Duration(seconds: 3)}) async {
-    final roomId = await ensureAccessAndGetRoom(solicitudId);
-    if (roomId == null) return;
-    _currentRoomId = roomId;
+    
+    if (!await hasAccessToSolicitud(solicitudId)) return;
+    
+    _currentSolicitudId = solicitudId;
     _lastCreatedAt = null;
     _pollTimer?.cancel();
 
     _pollTimer = Timer.periodic(interval, (_) async {
       try {
-        final raw = await _client
-            .from('messages')
-            .select()
-            .eq('room_id', roomId)
+        final response = await _client
+            .from('chat_messages')
+            .select('*')
+            .eq('solicitud_id', solicitudId)
             .order('created_at', ascending: false)
-            .limit(20);
+            .limit(10);
 
-        final data = _unwrap(raw);
-        if (data == null) return;
-        final list = (data is List)
-            ? (data as List).map((e) => Map<String, dynamic>.from(e as Map)).toList()
-            : (data is Map ? [Map<String, dynamic>.from(data)] : <Map<String, dynamic>>[]);
+        final messages = _safeMapList(response);
+        
+        if (messages.isEmpty) return;
+        
+        final newest = messages.first['created_at']?.toString();
 
-        if (list.isEmpty) return;
-        final newest = list.first['created_at']?.toString();
-
-        // Si es la primera vez del polling, sólo establecemos _lastCreatedAt para evitar emitir backlog
+        // Primera vez: solo establecer timestamp
         if (_lastCreatedAt == null) {
           _lastCreatedAt = newest;
           return;
         }
 
-        // Iterar en orden cronológico y emitir sólo los nuevos
-        for (var item in list.reversed) {
-          final created = item['created_at']?.toString();
+        // Emitir solo mensajes nuevos con nombres
+        for (var messageData in messages.reversed) {
+          final message = _safeMap(messageData);
+          final created = message['created_at']?.toString();
           if (created != null && _lastCreatedAt != null && created.compareTo(_lastCreatedAt!) > 0) {
-            onNewMessage(Map<String, dynamic>.from(item));
+            final senderId = message['sender_id']?.toString();
+            if (senderId != null && senderId.isNotEmpty) {
+              message['sender_name'] = await _getUserName(senderId);
+            }
+            onNewMessage(message);
           }
         }
 
-        // Actualizar último timestamp conocido
         _lastCreatedAt = newest ?? _lastCreatedAt;
-      } catch (e, st) {
-        print('[CHAT] polling ERROR: $e');
-        print(st);
-        // ignorar errores de red temporales
+      } catch (e) {
+        print('[CHAT] Error en polling: $e');
       }
     });
+  }
+
+  // Subir archivos (CORREGIR URLs)
+  Future<List<Map<String, dynamic>>?> uploadFiles(List<PlatformFile> files) async {
+    try {
+      final List<Map<String, dynamic>> uploaded = [];
+      
+      print('[CHAT] 🚀 Iniciando subida de ${files.length} archivo(s)');
+      print('[CHAT] 📦 Usando bucket: ${Constants.bucketAvatar}');
+      
+      for (final file in files) {
+        if (file.bytes == null && file.path == null) {
+          print('[CHAT] ⚠️ Saltando archivo sin datos: ${file.name}');
+          continue;
+        }
+        
+        final Uint8List bytes = file.bytes ?? await File(file.path!).readAsBytes();
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final userId = _client.auth.currentUser?.id ?? 'anonymous';
+        final extension = file.name.split('.').last.toLowerCase();
+        final cleanName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final uniqueName = '${timestamp}_${cleanName}';
+        final storagePath = 'chat_files/${userId}/$uniqueName';
+        
+        print('[CHAT] 📤 Subiendo: ${file.name} (${bytes.length} bytes)');
+        print('[CHAT] 📍 Ruta: $storagePath');
+        
+        try {
+          // ✨ SUBIR ARCHIVO CON CONFIGURACIÓN ESPECÍFICA
+          await _client.storage
+              .from(Constants.bucketAvatar)
+              .uploadBinary(
+                storagePath, 
+                bytes, 
+                fileOptions: FileOptions(
+                  contentType: _getFileTypeByExtension(extension),
+                  cacheControl: '3600',
+                  upsert: true, // ✨ PERMITIR SOBRESCRIBIR
+                )
+              );
+
+          // ✨ GENERAR URL PÚBLICA
+          final publicUrl = _client.storage
+              .from(Constants.bucketAvatar)
+              .getPublicUrl(storagePath);
+          
+          // ✨ VERIFICAR QUE LA URL FUNCIONA
+          print('[CHAT] 🔗 URL generada: $publicUrl');
+          
+          // ✨ TEST RÁPIDO DE LA URL
+          try {
+            final testResponse = await http.head(Uri.parse(publicUrl)).timeout(
+              const Duration(seconds: 5)
+            );
+            print('[CHAT] ✅ URL verificada - Status: ${testResponse.statusCode}');
+          } catch (testError) {
+            print('[CHAT] ⚠️ URL no verificable (pero continuando): $testError');
+          }
+          
+          uploaded.add({
+            'name': file.name,
+            'url': publicUrl,
+            'size': file.size,
+            'type': _getFileTypeFromName(file.name),
+            'storagePath': storagePath,
+            'extension': extension,
+          });
+          
+          print('[CHAT] ✅ Archivo subido: ${file.name}');
+          
+        } catch (uploadError) {
+          print('[CHAT] ❌ Error subiendo ${file.name}: $uploadError');
+          
+          // ✨ DIAGNOSTICAR ERROR ESPECÍFICO
+          final errorStr = uploadError.toString().toLowerCase();
+          if (errorStr.contains('bucket') || errorStr.contains('not found')) {
+            print('[CHAT] 🚨 ERROR: Bucket "${Constants.bucketAvatar}" no existe o no es accesible');
+          } else if (errorStr.contains('permission') || errorStr.contains('unauthorized')) {
+            print('[CHAT] 🚨 ERROR: Sin permisos para subir al bucket');
+          } else if (errorStr.contains('size') || errorStr.contains('large')) {
+            print('[CHAT] 🚨 ERROR: Archivo demasiado grande');
+          }
+        }
+      }
+      
+      print('[CHAT] 📊 Resumen: ${uploaded.length}/${files.length} archivos subidos');
+      return uploaded.isNotEmpty ? uploaded : null;
+      
+    } catch (e) {
+      print('[CHAT] ❌ Error general en uploadFiles: $e');
+      return null;
+    }
+  }
+
+  // ✨ MÉTODO MEJORADO PARA DETERMINAR TIPO DE ARCHIVO
+  String _getFileTypeByExtension(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'ppt':
+        return 'application/vnd.ms-powerpoint';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case 'txt':
+        return 'text/plain';
+      case 'mp4':
+        return 'video/mp4';
+      case 'mp3':
+        return 'audio/mpeg';
+      case 'zip':
+        return 'application/zip';
+      case 'rar':
+        return 'application/x-rar-compressed';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
+  String _getFileTypeFromName(String fileName) {
+    final extension = fileName.toLowerCase().split('.').last;
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+      case 'webp':
+        return 'image';
+      case 'mp4':
+      case 'mov':
+      case 'avi':
+      case 'mkv':
+        return 'video';
+      case 'pdf':
+        return 'pdf';
+      case 'doc':
+      case 'docx':
+      case 'xls':
+      case 'xlsx':
+      case 'ppt':
+      case 'pptx':
+        return 'document';
+      case 'mp3':
+      case 'wav':
+      case 'flac':
+        return 'audio';
+      default:
+        return 'file';
+    }
   }
 
   void stopPolling() {
     _pollTimer?.cancel();
     _pollTimer = null;
     _lastCreatedAt = null;
-    _currentRoomId = null;
   }
 
   void dispose() {
     stopPolling();
-  }
-
-  // Enviar mensaje (ahora soporta attachments opcionales)
-  Future<bool> sendMessage(String roomId, String content, {List<Map<String, dynamic>>? attachments}) async {
-    final user = _client.auth.currentUser;
-    if (user == null) {
-      print('[CHAT] sendMessage: usuario no autenticado');
-      return false;
-    }
-    try {
-      final payload = {
-        'room_id': roomId,
-        'user_id': user.id,
-        'content': content,
-        'attachments': attachments ?? [],
-      };
-      final raw = await _client.from('messages').insert(payload).select();
-      final data = _unwrap(raw);
-      return data != null;
-    } catch (e, st) {
-      print('[CHAT] sendMessage ERROR: $e');
-      print(st);
-      return false;
-    }
-  }
-
-  // Cargar datos de la solicitud (ej. asunto, descripcion, estado, ids)
-  Future<Map<String, dynamic>?> loadSolicitudData(String solicitudId) async {
-    try {
-      final raw = await _client
-          .from('solicitudes_tutorias')
-          .select('id, estado, estudiante_id, profesor_id, asunto, descripcion, created_at')
-          .eq('id', solicitudId)
-          .maybeSingle();
-
-      final data = _unwrap(raw);
-      if (data == null) return null;
-      return Map<String, dynamic>.from(data as Map);
-    } catch (e, st) {
-      print('[CHAT] loadSolicitudData ERROR: $e');
-      print(st);
-      return null;
-    }
-  }
-
-  /// Lista solicitudes en las que participa el usuario. Cada item incluye:
-  /// { 'solicitud': Map, 'room_id': String? }
-  Future<List<Map<String, dynamic>>> listConversations() async {
-    final user = _client.auth.currentUser;
-    if (user == null) return [];
-    try {
-      // Pedimos todos los campos para evitar fallos por columnas que no existan
-      dynamic raw;
-      try {
-        raw = await _client
-            .from('solicitudes_tutorias')
-            .select('*') // <- pedir todo en lugar de campos explícitos
-            .or('estudiante_id.eq.${user.id},profesor_id.eq.${user.id}');
-      } catch (e) {
-        print('[CHAT] listConversations: error al pedir *, fallback: $e');
-        raw = null;
-      }
-
-      final data = _unwrap(raw);
-      if (data == null) return [];
-
-      final rows = (data is List) ? data as List : [data];
-
-      // Debug: mostrar keys/columnas que devolvió la consulta (muestra solo la primera fila)
-      if (rows.isNotEmpty && rows.first is Map) {
-        final keys = (rows.first as Map).keys.toList();
-        print('[CHAT] listConversations: columnas recibidas: $keys');
-      } else {
-        print('[CHAT] listConversations: no hay filas o formato inesperado');
-      }
-
-      // Si no vinieron relations anidadas, consultamos rooms por solicitud_id (fallback)
-      bool anyHasRooms = rows.any((r) => r is Map && r.containsKey('rooms'));
-      Map<String, String> roomMap = {};
-      if (!anyHasRooms) {
-        final solicitudIds = rows.whereType<Map>().map((r) => r['id']?.toString()).where((id) => id != null).toSet().toList();
-        if (solicitudIds.isNotEmpty) {
-          final idsString = '(${solicitudIds.map((e) => "'$e'").join(',')})';
-          try {
-            final roomsRaw = await _client
-                .from('rooms')
-                .select('id, solicitud_id')
-                .filter('solicitud_id', 'in', idsString);
-            final roomsData = _unwrap(roomsRaw);
-            if (roomsData is List) {
-              for (var r in roomsData) {
-                try {
-                  final Map m = r as Map;
-                  final sid = m['solicitud_id']?.toString();
-                  final rid = m['id']?.toString();
-                  if (sid != null && rid != null) roomMap[sid] = rid;
-                } catch (_) {}
-              }
-            }
-          } catch (e) {
-            print('[CHAT] listConversations: fallback rooms query falló: $e');
-          }
-        }
-      }
-
-      final List<Map<String, dynamic>> out = [];
-      for (var r in rows) {
-        if (r is Map) {
-          final Map<String, dynamic> sol = Map<String, dynamic>.from(r);
-          String? roomId;
-          try {
-            final rooms = sol['rooms'];
-            if (rooms is List && rooms.isNotEmpty && rooms.first != null && rooms.first['id'] != null) {
-              roomId = rooms.first['id']?.toString();
-            } else if (rooms is Map && rooms['id'] != null) {
-              roomId = rooms['id']?.toString();
-            } else {
-              final sid = sol['id']?.toString();
-              if (sid != null && roomMap.containsKey(sid)) roomId = roomMap[sid];
-            }
-          } catch (_) {
-            final sid = sol['id']?.toString();
-            if (sid != null && roomMap.containsKey(sid)) roomId = roomMap[sid];
-          }
-          out.add({'solicitud': sol, 'room_id': roomId});
-        }
-      }
-      print('[CHAT] listConversations: items=${out.length}');
-      return out;
-    } catch (e, st) {
-      print('[CHAT] listConversations ERROR: $e');
-      print(st);
-      return [];
-    }
-  }
-
-  /// Sube archivos al bucket 'chat_files' y devuelve lista con { name, url, path } o null si falla.
-  Future<List<Map<String, dynamic>>?> uploadFiles(List<PlatformFile> files) async {
-    if (files.isEmpty) return [];
-    final bucket = _client.storage.from('chat_files');
-    final List<Map<String, dynamic>> uploaded = [];
-    try {
-      for (final f in files) {
-        // obtener bytes: preferimos PlatformFile.bytes por compatibilidad con web/móvil
-        final bytesList = f.bytes ?? (f.path != null ? await File(f.path!).readAsBytes() : null);
-        if (bytesList == null) {
-          print('[CHAT] no hay bytes para ${f.name}');
-          continue;
-        }
-        final Uint8List bytes = Uint8List.fromList(bytesList);
-        final path = 'chats/${DateTime.now().millisecondsSinceEpoch}_${f.name}';
-
-        var uploadOk = false;
-        try {
-          // 1) intento preferido: uploadBinary(path, Uint8List)
-          final maybe = _client.storage.from('chat_files').uploadBinary(path, bytes);
-          final res = await Future.value(maybe);
-          print('[CHAT] uploadBinary response for $path: $res');
-          uploadOk = true;
-        } catch (e) {
-          print('[CHAT] uploadBinary failed for $path: $e');
-          // 2) fallback: upload with File (if we have a file path)
-          if (f.path != null) {
-            try {
-              final maybe2 = _client.storage.from('chat_files').upload(path, File(f.path!));
-              final res2 = await Future.value(maybe2);
-              print('[CHAT] upload(File) response for $path: $res2');
-              uploadOk = true;
-            } catch (e2) {
-              print('[CHAT] upload(File) failed for $path: $e2');
-              uploadOk = false;
-            }
-          }
-        }
-
-        if (!uploadOk) {
-          print('[CHAT] No se pudo subir ${f.name}');
-          continue;
-        }
-
-        // Intentar crear signed URL — ojo: este SDK espera un int "days"
-        dynamic maybeSigned;
-        try {
-          maybeSigned = bucket.createSignedUrl(path, 7); // <-- pasar int días (ej. 7)
-        } catch (e) {
-          print('[CHAT] createSignedUrl no disponible o falló para $path: $e');
-          maybeSigned = null;
-        }
-
-        final signedResp = maybeSigned != null ? await Future.value(maybeSigned) : null;
-        String? url = _extractUrlFromResponse(signedResp);
-
-        // fallback público si no hay signed url
-        if (url == null) {
-          try {
-            dynamic maybePub = bucket.getPublicUrl(path);
-            final pubResp = await Future.value(maybePub);
-            url = _extractUrlFromResponse(pubResp);
-          } catch (e) {
-            print('[CHAT] getPublicUrl falló para $path: $e');
-          }
-        }
-
-        if (url != null && url.isNotEmpty) {
-          uploaded.add({'name': f.name, 'url': url, 'path': path});
-        } else {
-          // si falla extraer url, igualmente guardamos path (útil para server-side signing)
-          uploaded.add({'name': f.name, 'url': '', 'path': path});
-        }
-      }
-      return uploaded;
-    } catch (e, st) {
-      print('[CHAT] uploadFiles ERROR: $e');
-      print(st);
-      return null;
-    }
-  }
-
-  /// Intenta subir bytes al bucket 'chat_files', intentando varias firmas
-  /// para incluir metadata {'user_id': <uid>} si la SDK lo soporta.
-  /// Devuelve true si la subida fue aparentemente exitosa.
-  Future<bool> _tryUploadWithMetadata(String path, Uint8List bytes, String fileName) async {
-    final bucket = _client.storage.from('chat_files');
-    final user = _client.auth.currentUser;
-    final userId = user?.id ?? '';
-
-    try {
-      // 1) Intento: uploadBinary con FileOptions (metadata si la SDK lo soporta)
-      try {
-        print('[CHAT] intentando uploadBinary con FileOptions (firma1)');
-        final maybe = bucket.uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(
-            contentType: 'application/octet-stream',
-            // metadata puede no estar disponible en todas las versiones de la SDK.
-            // Si da error de parámetro desconocido, eliminar la línea `metadata: {...}`.
-            metadata: {'user_id': userId},
-          ),
-        );
-        final res = await Future.value(maybe);
-        print('[CHAT] uploadBinary respuesta: $res');
-        return true;
-      } catch (e1) {
-        print('[CHAT] uploadBinary firma1 falló: $e1');
-      }
-
-      // 2) Intento alternativo (misma idea, prueba otra firma si existe)
-      try {
-        print('[CHAT] intentando uploadBinary con FileOptions (firma2)');
-        final maybe = bucket.uploadBinary(
-          path,
-          bytes,
-          fileOptions: FileOptions(
-            contentType: 'application/octet-stream',
-            metadata: {'user_id': userId},
-          ),
-        );
-        final res = await Future.value(maybe);
-        print('[CHAT] uploadBinary respuesta firma2: $res');
-        return true;
-      } catch (e2) {
-        print('[CHAT] uploadBinary firma2 falló: $e2');
-      }
-
-      // 3) Intento: upload(path, bytes, fileOptions: ...)
-      try {
-        print('[CHAT] intentando bucket.upload(path, bytes, fileOptions)');
-        // Save bytes to a temporary file and upload as File
-        final tempDir = Directory.systemTemp;
-        final tempFile = await File('${tempDir.path}/$fileName').writeAsBytes(bytes);
-        final maybe = bucket.upload(
-          path,
-          tempFile,
-          fileOptions: FileOptions(
-            contentType: 'application/octet-stream',
-            metadata: {'user_id': userId},
-          ),
-        );
-        final res = await Future.value(maybe);
-        print('[CHAT] upload (bytes) respuesta: $res');
-        return true;
-      } catch (e3) {
-        print('[CHAT] upload(path, bytes, fileOptions) falló: $e3');
-      }
-
-      // 4) Intento: subir File (si tienes path en disco) con fileOptions
-      try {
-        // si entramos aquí, creamos un archivo temporal con los bytes para usar la sobrecarga que recibe File
-        final tempDir = await Directory.systemTemp.createTemp('chat_upload_');
-        final tempFilePath = '${tempDir.path}/${DateTime.now().millisecondsSinceEpoch}_$fileName';
-        final tempFile = File(tempFilePath);
-        await tempFile.writeAsBytes(bytes);
-
-        try {
-          print('[CHAT] intentando bucket.upload(path, File, fileOptions) usando tempFile: $tempFilePath');
-          final maybe = bucket.upload(
-            path,
-            tempFile,
-            // use FileOptions si tu SDK lo soporta; quita `metadata:` si tu versión arroja error
-            fileOptions: FileOptions(
-              contentType: 'application/octet-stream',
-              metadata: {'user_id': userId},
-            ),
-          );
-          final res = await Future.value(maybe);
-          print('[CHAT] upload(file) respuesta: $res');
-          return true;
-        } catch (e4) {
-          print('[CHAT] upload(path, File, fileOptions) falló: $e4');
-        } finally {
-          // limpiar archivo y carpeta temporal
-          try {
-            if (await tempFile.exists()) await tempFile.delete();
-            if (await tempDir.exists()) await tempDir.delete();
-          } catch (_) {}
-        }
-      } catch (eTemp) {
-        print('[CHAT] error creando temp file para upload: $eTemp');
-      }
-
-      // 5) Fallback: intentar sin metadata (asegurarnos de que la subida funciona)
-      try {
-        print('[CHAT] Intentando upload sin metadata (fallback)');
-        try {
-          final maybe = bucket.uploadBinary(path, bytes);
-          final res = await Future.value(maybe);
-          print('[CHAT] uploadBinary fallback ok: $res');
-          return true;
-        } catch (_) {
-          try {
-            // Save bytes to a temporary file and upload as File
-            final tempDir = Directory.systemTemp;
-            final tempFile = await File('${tempDir.path}/temp_upload_${DateTime.now().millisecondsSinceEpoch}').writeAsBytes(bytes);
-            final maybe2 = bucket.upload(path, tempFile);
-            final res2 = await Future.value(maybe2);
-            print('[CHAT] upload fallback bytes ok: $res2');
-            return true;
-          } catch (e5) {
-            print('[CHAT] upload fallback bytes falló: $e5');
-          }
-        }
-      } catch (ef) {
-        print('[CHAT] fallback global falló: $ef');
-      }
-    } catch (finalOuter) {
-      print('[CHAT] error inesperado en _tryUploadWithMetadata: $finalOuter');
-    }
-
-    // si llegamos aquí, todo falló
-    return false;
-  }
-
-  /// Después de que uploadBinary/upload haya devuelto OK y tengas `path`
-  /// bucket ya definido: final bucket = _client.storage.from('chat_files');
-  ///
-  /// Intenta obtener una signed URL (7 días) y, si falla, una public URL.
-  /// Devuelve true si al menos una URL válida fue obtenida y registrada en el attachment.
-  Future<bool> _trySetUrlForAttachment(String path, String fileName) async {
-    final bucket = _client.storage.from('chat_files');
-
-    try {
-      // 1) intentar signed URL (7 días)
-      dynamic maybeSigned = bucket.createSignedUrl(path, 7);
-      final signedResp = await Future.value(maybeSigned);
-      final signedUrl = _extractUrlFromResponse(signedResp);
-
-      if (signedUrl != null && signedUrl.isNotEmpty) {
-        print('[CHAT] signedUrl para $path: $signedUrl');
-        // usa signedUrl en el attachment
-        return true;
-      } else {
-        // 2) fallback a public url (si tu bucket es público o getPublicUrl funciona)
-        try {
-          dynamic maybePub = bucket.getPublicUrl(path);
-          final pubResp = await Future.value(maybePub);
-          final pubUrl = _extractUrlFromResponse(pubResp);
-          if (pubUrl != null && pubUrl.isNotEmpty) {
-            print('[CHAT] publicUrl para $path: $pubUrl');
-            // usa pubUrl en el attachment
-            return true;
-          } else {
-            print('[CHAT] No se pudo obtener signed ni public url para $path. RESPUESTAS: signed=$signedResp pub=$pubResp');
-            // Guarda path y haz signing server-side si necesitas seguridad
-          }
-        } catch (ePub) {
-          print('[CHAT] getPublicUrl falló para $path: $ePub (signedResp=$signedResp)');
-        }
-      }
-    } catch (e) {
-      print('[CHAT] Error al obtener signed/public URL para $path: $e');
-    }
-
-    return false;
-  }
-
-  // --- helper: intenta obtener una URL usable (signed -> public)
-  Future<String?> _getUrlForPath(String path, {int days = 7}) async {
-    final bucket = _client.storage.from('chat_files');
-
-    try {
-      // 1) signed URL (varias SDKs devuelven Map o String)
-      try {
-        final maybeSigned = bucket.createSignedUrl(path, days);
-        final signedResp = await Future.value(maybeSigned);
-        final signedUrl = _extractUrlFromResponse(signedResp);
-        print('[CHAT] createSignedUrl respuesta para $path: $signedResp -> parsed=$signedUrl');
-        if (signedUrl != null && signedUrl.isNotEmpty) return signedUrl;
-      } catch (e) {
-        print('[CHAT] createSignedUrl falló para $path: $e');
-      }
-
-      // 2) public URL fallback (getPublicUrl puede devolver Map o String)
-      try {
-        final maybePub = bucket.getPublicUrl(path);
-        final pubResp = await Future.value(maybePub);
-        final pubUrl = _extractUrlFromResponse(pubResp);
-        print('[CHAT] getPublicUrl respuesta para $path: $pubResp -> parsed=$pubUrl');
-        if (pubUrl != null && pubUrl.isNotEmpty) return pubUrl;
-      } catch (e) {
-        print('[CHAT] getPublicUrl falló para $path: $e');
-      }
-    } catch (e) {
-      print('[CHAT] _getUrlForPath error inesperado para $path: $e');
-    }
-
-    return null;
-  }
-
-  /// Descarga la URL y guarda el archivo en la carpeta "Downloads" del dispositivo (si es posible).
-  /// Retorna la ruta del archivo guardado o null en caso de error.
-  Future<String?> downloadAndSaveFile(String url, String fileName) async {
-    try {
-      // Pedir permiso en Android (iOS no necesita para app dir; para guardar en Photos requiere más)
-      if (Platform.isAndroid) {
-        final status = await Permission.storage.request();
-        if (!status.isGranted) {
-          print('[CHAT] permiso de almacenamiento denegado');
-          return null;
-        }
-      }
-
-      final uri = Uri.parse(url);
-      final resp = await http.get(uri);
-      if (resp.statusCode != 200) {
-        print('[CHAT] descarga fallo, status=${resp.statusCode}');
-        return null;
-      }
-
-      // Intentar obtener carpeta de descargas en Android: getExternalStorageDirectories(StorageDirectory.downloads)
-      Directory? saveDir;
-      if (Platform.isAndroid) {
-        final dirs = await getExternalStorageDirectories(type: StorageDirectory.downloads);
-        if (dirs != null && dirs.isNotEmpty) {
-          saveDir = dirs.first;
-        } else {
-          // fallback a app-specific external directory
-          saveDir = await getExternalStorageDirectory();
-        }
-      } else if (Platform.isIOS) {
-        // iOS: usar app documents (para guardar en Photos se necesita otra integración)
-        saveDir = await getApplicationDocumentsDirectory();
-      } else {
-        // desktop: use downloads dir or temp
-        try {
-          saveDir = await getDownloadsDirectory();
-        } catch (_) {
-          saveDir = await getTemporaryDirectory();
-        }
-      }
-
-      if (saveDir == null) {
-        print('[CHAT] no se pudo determinar directorio de guardado');
-        return null;
-      }
-
-      // Asegurar que exista
-      await saveDir.create(recursive: true);
-
-      // Sanear nombre
-      final safeName = fileName.replaceAll(RegExp(r'[:\\/]+'), '_');
-
-      final filePath = '${saveDir.path}/$safeName';
-      final file = File(filePath);
-      await file.writeAsBytes(resp.bodyBytes);
-      print('[CHAT] archivo guardado en $filePath');
-      return filePath;
-    } catch (e, st) {
-      print('[CHAT] downloadAndSaveFile ERROR: $e');
-      print(st);
-      return null;
-    }
   }
 }

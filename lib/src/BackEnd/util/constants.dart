@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:my_app/src/BackEnd/custom/library.dart';
@@ -6,6 +5,7 @@ import 'package:my_app/src/BackEnd/custom/library.dart';
 
 class Constants {
 static const bucketAvatar = 'imagenes_usuarios';
+static const bucketChatFiles = 'chat_files'; // ✨ NUEVO BUCKET PARA ARCHIVOS DEL CHAT
 //colors
 static Color colorAccent = HexColor.fromHex("#991f34");
 static Color colorPrimary = HexColor.fromHex("#b60927");

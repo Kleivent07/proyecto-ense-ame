@@ -1,15 +1,14 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:my_app/src/BackEnd/custom/GrabacionAutomatica.dart';
-import 'package:my_app/src/BackEnd/custom/hybrid_recording_service.dart';
 import 'package:my_app/src/BackEnd/custom/notifications_service.dart';
 import 'package:my_app/src/BackEnd/custom/zego_keys.dart';
+import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:my_app/src/models/reuniones_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:zego_uikit_prebuilt_call/zego_uikit_prebuilt_call.dart';
 import 'package:flutter/services.dart';
-
 
 class CreateMeetingPage extends StatefulWidget {
   const CreateMeetingPage({Key? key}) : super(key: key);
@@ -18,7 +17,7 @@ class CreateMeetingPage extends StatefulWidget {
   State<CreateMeetingPage> createState() => _CreateMeetingPageState();
 }
 
-class _CreateMeetingPageState extends State<CreateMeetingPage> {
+class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProviderStateMixin {
   final _tutorCtrl = TextEditingController();
   final _subjectCtrl = TextEditingController();
   DateTime? _selectedDate;
@@ -26,13 +25,35 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
   bool _saving = false;
   bool _opening = false;
   String? _createdRoomId;
-  bool _recordSession = false;
-  final HybridRecordingService _recordingService = HybridRecordingService();
-  final AutoRecordingService _autoRecordingService = AutoRecordingService();
+  
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutBack,
+    ));
+    
     final user = Supabase.instance.client.auth.currentUser;
     if (user != null) {
       final displayName = user.userMetadata?['full_name']?.toString() ??
@@ -42,10 +63,13 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
         _tutorCtrl.text = displayName;
       }
     }
+    
+    _animationController.forward();
   }
 
   @override
   void dispose() {
+    _animationController.dispose();
     _tutorCtrl.dispose();
     _subjectCtrl.dispose();
     super.dispose();
@@ -57,9 +81,38 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
       initialDate: DateTime.now().toLocal(),
       firstDate: DateTime.now().toLocal(),
       lastDate: DateTime(DateTime.now().year + 3),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Constants.colorPrimary,
+              onPrimary: Constants.colorBackground,
+              surface: Constants.colorBackground,
+              onSurface: Constants.colorFont,
+            ),
+          ),
+          child: child!,
+        );
+      },
     );
     if (picked != null) {
-      final time = await showTimePicker(context: context, initialTime: TimeOfDay.now());
+      final time = await showTimePicker(
+        context: context, 
+        initialTime: TimeOfDay.now(),
+        builder: (context, child) {
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: ColorScheme.light(
+                primary: Constants.colorPrimary,
+                onPrimary: Constants.colorBackground,
+                surface: Constants.colorBackground,
+                onSurface: Constants.colorFont,
+              ),
+            ),
+            child: child!,
+          );
+        },
+      );
       if (time != null) {
         setState(() => _selectedDate = DateTime(picked.year, picked.month, picked.day, time.hour, time.minute));
       } else {
@@ -70,11 +123,11 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
 
   Future<void> _create() async {
     if (_tutorCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ingresa el nombre del tutor')));
+      _showSnackBar('Ingresa el nombre del tutor', isError: true);
       return;
     }
     if (_selectedDate == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Selecciona fecha y hora')));
+      _showSnackBar('Selecciona fecha y hora', isError: true);
       return;
     }
 
@@ -90,7 +143,6 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
         subject: _subjectCtrl.text.trim(),
         scheduledAt: _selectedDate!.toUtc(),
         tutorId: tutorId,
-        record: _recordSession,
       );
 
       setState(() {
@@ -99,6 +151,7 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
       });
 
       if (created != null) {
+        // Programar notificaciones
         final scheduledRaw = created['scheduled_at'] as String?;
         if (scheduledRaw != null) {
           try {
@@ -125,14 +178,14 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
             debugPrint('No se pudo programar notificaciones: $e');
           }
         }
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Reunión creada')));
+        _showSnackBar('¡Reunión creada exitosamente!', isError: false);
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error creando reunión')));
+        _showSnackBar('Error creando reunión', isError: true);
       }
     } catch (e, st) {
       debugPrint('Error en _create: $e\n$st');
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ocurrió un error al crear la reunión')));
+      _showSnackBar('Ocurrió un error al crear la reunión', isError: true);
     }
   }
 
@@ -144,22 +197,8 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     final userID = user?.id ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
     final userName = _tutorCtrl.text.trim().isEmpty ? 'Tutor' : _tutorCtrl.text.trim();
 
-    bool recordingStarted = false;
-
-    // Si la grabación está activada, intentar iniciar grabación automática
-    if (_recordSession) {
-      recordingStarted = await _autoRecordingService.startAutoRecording(context, _createdRoomId!);
-      
-      // Si no se pudo iniciar grabación automática, mostrar instrucciones manuales como fallback
-      if (!recordingStarted) {
-        await _recordingService.showPreMeetingDialog(context, _createdRoomId!);
-      }
-    }
-
-    // Configuración básica
     ZegoUIKitPrebuiltCallConfig config = ZegoUIKitPrebuiltCallConfig.oneOnOneVideoCall();
 
-    // Navegar a la llamada
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -175,193 +214,725 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> {
     );
 
     setState(() => _opening = false);
-
-    // Después de la llamada
-    if (_recordSession && mounted) {
-      if (recordingStarted && _autoRecordingService.isRecording) {
-        // Detener grabación automática
-        await _autoRecordingService.stopAutoRecording(context, _createdRoomId!);
-      } else {
-        // Mostrar diálogo manual como fallback
-        await _recordingService.showPostMeetingDialog(context, _createdRoomId!);
-      }
-    }
   }
 
-  Widget _buildHeader() {
-    return Card(
-      elevation: 3,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 14),
-        child: Row(
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.12),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Icon(Icons.video_call, size: 28, color: Theme.of(context).colorScheme.primary),
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Constants.colorBackground,
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Crear reunión', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
-                  Text('Agenda una sesión y configura opciones como grabación y recordatorios.', style: Theme.of(context).textTheme.bodySmall),
-                ],
+              child: Text(
+                message,
+                style: Constants.textStyleBLANCO,
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildFormCard() {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-        child: Column(
-          children: [
-            TextField(
-              controller: _tutorCtrl,
-              decoration: InputDecoration(
-                labelText: 'Nombre del tutor',
-                prefixIcon: const Icon(Icons.person),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: _subjectCtrl,
-              decoration: InputDecoration(
-                labelText: 'Asignatura (opcional)',
-                prefixIcon: const Icon(Icons.book),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickDate,
-                    icon: const Icon(Icons.calendar_today),
-                    label: Text(_selectedDate == null
-                        ? 'Elegir fecha y hora'
-                        : DateFormat('dd/MM/yyyy – HH:mm').format(_selectedDate!.toLocal())),
-                    style: OutlinedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            SwitchListTile.adaptive(
-              value: _recordSession,
-              onChanged: (v) => setState(() => _recordSession = v),
-              title: const Text('Grabar clase'),
-              subtitle: const Text('Marca para indicar que la sesión debe grabarse'),
-              secondary: Icon(Icons.fiber_manual_record, color: _recordSession ? Colors.red : Colors.grey),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _saving ? null : _create,
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: _saving
-                        ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Crear reunión', style: TextStyle(fontSize: 16)),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildResultCard() {
-    if (_createdRoomId == null) return const SizedBox.shrink();
-    return Card(
-      color: Colors.grey.shade50,
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Reunión creada', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 8),
-            SelectableText('Room ID: $_createdRoomId', style: const TextStyle(fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              alignment: WrapAlignment.start,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _opening ? null : _openCreatedMeeting,
-                  icon: _opening ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.videocam),
-                  label: const Text('Abrir videollamada'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: _createdRoomId ?? ''));
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Room ID copiado')));
-                  },
-                  icon: const Icon(Icons.copy),
-                  label: const Text('Copiar ID'),
-                ),
-                if (_recordSession)
-                  Chip(label: const Text('Grabación: activada'), backgroundColor: Colors.green.shade50),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text('Comparte el Room ID con los participantes para que se unan.', style: Theme.of(context).textTheme.bodySmall),
-          ],
-        ),
+        backgroundColor: isError ? Constants.colorError : Constants.colorPrimary,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Crear reunión'),
-        centerTitle: true,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _buildHeader(),
-              _buildFormCard(),
-              _buildResultCard(),
-            ],
+    return cerrarTecladoAlTocar(
+      child: Scaffold(
+        backgroundColor: Constants.colorPrimaryDark,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Constants.colorBackground.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(Icons.arrow_back, color: Constants.colorBackground, size: 20),
+            ),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            'Crear Reunión',
+            style: Constants.textStyleBLANCOTitle,
+          ),
+          centerTitle: true,
+          flexibleSpace: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Constants.colorPrimaryDark,
+                  Constants.colorPrimary,
+                ],
+              ),
+            ),
           ),
         ),
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Constants.colorPrimaryDark,
+                Constants.colorPrimary,
+                Constants.colorPrimaryLight.withOpacity(0.1),
+              ],
+              stops: const [0.0, 0.6, 1.0],
+            ),
+          ),
+          child: SafeArea(
+            child: FadeTransition(
+              opacity: _fadeAnimation,
+              child: SlideTransition(
+                position: _slideAnimation,
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // ✨ Header elegante con estilo profesor
+                      _buildProfessorHeader(),
+                      const SizedBox(height: 24),
+                      
+                      // ✨ Formulario moderno
+                      _buildModernForm(),
+                      const SizedBox(height: 24),
+                      
+                      // ✨ Tarjeta de resultado (si existe)
+                      if (_createdRoomId != null) ...[
+                        _buildSuccessCard(),
+                        const SizedBox(height: 24),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfessorHeader() {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Constants.colorBackground,
+            Constants.colorBackground.withOpacity(0.95),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.15),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Icono principal con estilo profesor
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Constants.colorPrimary,
+                  Constants.colorPrimaryDark,
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: Constants.colorPrimary.withOpacity(0.3),
+                  blurRadius: 15,
+                  offset: const Offset(0, 5),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.video_call_rounded,
+              size: 40,
+              color: Constants.colorBackground,
+            ),
+          ),
+          const SizedBox(height: 20),
+          
+          // Título y subtítulo
+          Text(
+            'Crear Nueva Reunión',
+            style: Constants.textStyleFontTitle.copyWith(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Organiza una sesión de tutoría personalizada\npara conectar con tus estudiantes',
+            style: Constants.textStyleFont.copyWith(
+              color: Constants.colorFont.withOpacity(0.7),
+              fontSize: 16,
+              height: 1.4,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Estadística o info adicional
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(
+              color: Constants.colorPrimary.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: Constants.colorPrimary.withOpacity(0.2),
+                width: 1,
+              ),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.school_rounded,
+                  color: Constants.colorPrimary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Panel de Profesor',
+                  style: Constants.textStylePrimarySemiBold.copyWith(fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernForm() {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        color: Constants.colorBackground,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Título de la sección
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Constants.colorPrimary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.edit_rounded,
+                  color: Constants.colorPrimary,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'Detalles de la Reunión',
+                style: Constants.textStyleFontTitle.copyWith(fontSize: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          
+          // Campo nombre del tutor
+          _buildModernTextField(
+            controller: _tutorCtrl,
+            label: 'Nombre del Tutor',
+            hint: 'Tu nombre como aparecerá en la reunión',
+            icon: Icons.person_rounded,
+            color: Constants.colorPrimary,
+          ),
+          const SizedBox(height: 20),
+          
+          // Campo materia
+          _buildModernTextField(
+            controller: _subjectCtrl,
+            label: 'Materia o Tema',
+            hint: 'Ej: Matemáticas, Física, Programación...',
+            icon: Icons.subject_rounded,
+            color: Constants.colorPrimaryDark,
+            isOptional: true,
+          ),
+          const SizedBox(height: 24),
+          
+          // Selector de fecha y hora
+          _buildDateTimeSelector(),
+          const SizedBox(height: 32),
+          
+          // Botón crear
+          _buildCreateButton(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildModernTextField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    required Color color,
+    bool isOptional = false,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(
+              label,
+              style: Constants.textStyleFontBold.copyWith(fontSize: 16),
+            ),
+            if (isOptional) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Constants.colorSecondary.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'opcional',
+                  style: Constants.textStyleFontSmall.copyWith(
+                    color: Constants.colorSecondary,
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: controller,
+          style: Constants.textStyleFont.copyWith(fontSize: 16),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: Constants.textStyleFont.copyWith(
+              color: Constants.colorFont.withOpacity(0.5),
+              fontSize: 14,
+            ),
+            prefixIcon: Container(
+              margin: const EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: color, size: 20),
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: Constants.colorFont.withOpacity(0.2),
+                width: 1.5,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: Constants.colorFont.withOpacity(0.2),
+                width: 1.5,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(color: color, width: 2),
+            ),
+            filled: true,
+            fillColor: Constants.colorFondo2.withOpacity(0.3),
+            contentPadding: const EdgeInsets.all(16),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateTimeSelector() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Fecha y Hora',
+          style: Constants.textStyleFontBold.copyWith(fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: _pickDate,
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: _selectedDate != null
+                  ? LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Constants.colorPrimary.withOpacity(0.1),
+                        Constants.colorPrimaryLight.withOpacity(0.05),
+                      ],
+                    )
+                  : null,
+              color: _selectedDate == null ? Constants.colorFondo2.withOpacity(0.3) : null,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: _selectedDate != null 
+                    ? Constants.colorPrimary.withOpacity(0.3)
+                    : Constants.colorFont.withOpacity(0.2),
+                width: 1.5,
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Constants.colorPrimary.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    Icons.calendar_today_rounded,
+                    color: Constants.colorPrimary,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _selectedDate == null ? 'Seleccionar fecha y hora' : 'Reunión programada',
+                        style: Constants.textStyleFontBold.copyWith(
+                          fontSize: 16,
+                          color: _selectedDate != null ? Constants.colorPrimary : Constants.colorFont,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _selectedDate == null
+                            ? 'Toca para elegir cuándo será la reunión'
+                            : DateFormat('EEEE, dd MMMM yyyy - HH:mm', 'es').format(_selectedDate!.toLocal()),
+                        style: Constants.textStyleFont.copyWith(
+                          color: Constants.colorFont.withOpacity(0.7),
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  color: Constants.colorFont.withOpacity(0.5),
+                  size: 16,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCreateButton() {
+    return Container(
+      height: 60,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: _saving 
+              ? [Constants.colorFont.withOpacity(0.3), Constants.colorFont.withOpacity(0.3)]
+              : [Constants.colorPrimary, Constants.colorPrimaryDark],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Constants.colorPrimary.withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: ElevatedButton(
+        onPressed: _saving ? null : _create,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
+        child: _saving
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.5,
+                      valueColor: AlwaysStoppedAnimation<Color>(Constants.colorBackground),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Text(
+                    'Creando reunión...',
+                    style: Constants.textStyleBLANCOSemiBold.copyWith(fontSize: 16),
+                  ),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.add_circle_rounded,
+                    color: Constants.colorBackground,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Crear Reunión',
+                    style: Constants.textStyleBLANCOSemiBold.copyWith(fontSize: 16),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  Widget _buildSuccessCard() {
+    return Container(
+      padding: const EdgeInsets.all(28),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Constants.colorRosaLight.withOpacity(0.1),
+            Constants.colorRosa.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: Constants.colorRosa.withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Constants.colorRosa.withOpacity(0.1),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header exitoso
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Constants.colorRosa.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(
+                  Icons.check_circle_rounded,
+                  color: Constants.colorRosa,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '¡Reunión Creada!',
+                      style: Constants.textStyleFontTitle.copyWith(
+                        fontSize: 20,
+                        color: Constants.colorRosa,
+                      ),
+                    ),
+                    Text(
+                      'Tu sesión está lista para comenzar',
+                      style: Constants.textStyleFont.copyWith(
+                        color: Constants.colorFont.withOpacity(0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Room ID
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Constants.colorBackground,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Constants.colorFont.withOpacity(0.1),
+                width: 1,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Room ID:',
+                  style: Constants.textStyleFontSmall.copyWith(
+                    color: Constants.colorFont.withOpacity(0.6),
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                SelectableText(
+                  _createdRoomId!,
+                  style: Constants.textStyleFontBold.copyWith(
+                    fontSize: 16,
+                    fontFamily: 'monospace',
+                    color: Constants.colorRosa,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 20),
+          
+          // Botones de acción
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  height: 50,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Constants.colorRosa, Constants.colorRosaDark],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: ElevatedButton.icon(
+                    onPressed: _opening ? null : _openCreatedMeeting,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    icon: _opening 
+                        ? SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Constants.colorBackground),
+                            ),
+                          )
+                        : Icon(Icons.videocam_rounded, color: Constants.colorBackground),
+                    label: Text(
+                      _opening ? 'Iniciando...' : 'Iniciar Ahora',
+                      style: Constants.textStyleBLANCOSemiBold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Container(
+                height: 50,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Constants.colorRosa, width: 1.5),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: IconButton(
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: _createdRoomId!));
+                    _showSnackBar('Room ID copiado al portapapeles', isError: false);
+                  },
+                  icon: Icon(Icons.copy_rounded, color: Constants.colorRosa),
+                  tooltip: 'Copiar Room ID',
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Instrucciones
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Constants.colorBackground.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: Constants.colorRosa,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    'Comparte el Room ID con tus estudiantes para que puedan unirse a la reunión.',
+                    style: Constants.textStyleFont.copyWith(
+                      fontSize: 14,
+                      color: Constants.colorFont.withOpacity(0.8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

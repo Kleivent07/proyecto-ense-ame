@@ -5,6 +5,12 @@ import 'package:my_app/src/pages/Estudiantes/lista_solicitud_estudiante_page.dar
 import 'package:my_app/src/pages/Profesores/lista_solicitud_profesor_page.dart';
 import 'package:my_app/src/pages/Editar/lista_solicitudes_page.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
+// ✅ Imports oficiales para el sistema de calificaciones
+import 'package:my_app/src/pages/Estudiantes/mis_calificaciones_page.dart';
+import 'package:my_app/src/pages/Estudiantes/calificar_reuniones_page.dart';
+
+// 🧪 Import para debug (comentar en producción)
+// import 'package:my_app/src/pages/debug/debug_reunion_test.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -66,44 +72,38 @@ class _PerfilPageState extends State<PerfilPage> {
       setState(() => cargando = false);
     }
   }
+  
   Future<List<SolicitudData>> _obtenerSolicitudes() async {
-  final userId = Supabase.instance.client.auth.currentUser!.id;
-  final solicitudModel = SolicitudModel();
+    final userId = Supabase.instance.client.auth.currentUser!.id;
+    final solicitudModel = SolicitudModel();
 
-  if (esProfesor == true) {
-    // Si es profesor, obtiene solicitudes que le enviaron
-    return await solicitudModel.obtenerSolicitudesPorProfesor(userId);
-  } else {
-    // Si es estudiante, obtiene solicitudes que él envió
-    return await solicitudModel.obtenerSolicitudesPorEstudiante(userId);
+    if (esProfesor == true) {
+      return await solicitudModel.obtenerSolicitudesPorProfesor(userId);
+    } else {
+      return await solicitudModel.obtenerSolicitudesPorEstudiante(userId);
+    }
   }
-}
-Future<void> _irListaSolicitudes() async {
-  final solicitudes = await _obtenerSolicitudes();
-  if (!mounted) return;
 
-  if (esProfesor == true) {
-    // Profesores: van a aceptar/rechazar
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ListaSolicitudesProfesorPage(
-          solicitudes: solicitudes,
+  Future<void> _irListaSolicitudes() async {
+    final solicitudes = await _obtenerSolicitudes();
+    if (!mounted) return;
+
+    if (esProfesor == true) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ListaSolicitudesProfesorPage(solicitudes: solicitudes),
         ),
-      ),
-    );
-  } else {
-    // Estudiantes: pueden eliminar sus solicitudes
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ListaSolicitudesEstudiantePage(
-          solicitudes: solicitudes,
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ListaSolicitudesEstudiantePage(solicitudes: solicitudes),
         ),
-      ),
-    );
+      );
+    }
   }
-}
 
   Future<void> _logout() async {
     try {
@@ -317,7 +317,8 @@ Future<void> _irListaSolicitudes() async {
                 ),
                 const SizedBox(height: 12),
               ],
-              // Botón para ir a la lista de solicitudes
+              
+              // Botón solicitudes
               ElevatedButton.icon(
                 icon: const Icon(Icons.mail),
                 label: Text(esProfesor ? "Solicitudes Recibidas" : "Mis Solicitudes"),
@@ -331,6 +332,81 @@ Future<void> _irListaSolicitudes() async {
                 onPressed: _irListaSolicitudes,
               ),
               const SizedBox(height: 12),
+              
+              // ✅ Sección de calificaciones (solo para estudiantes)
+              if (!esProfesor) ...[
+                
+                // Botón Clasificar Reuniones
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.rate_review),
+                  label: const Text("Calificar Reuniones"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Constants.colorAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ClasificarReunionesPage(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+                
+                // Botón Mis Calificaciones
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.star),
+                  label: const Text("Mis Calificaciones"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.purple,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MisCalificacionesPage(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+              
+              // 🧪 Botón de debug (descomenta solo para desarrollo)
+              /*
+              if (!esProfesor) ...[
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.bug_report),
+                  label: const Text("🧪 Debug Sistema"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orange,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const DebugReunionTestPage(),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 12),
+              ],
+              */
+              
               ElevatedButton.icon(
                 icon: const Icon(Icons.lock),
                 label: const Text("Cambiar contraseña"),
