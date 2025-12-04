@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
+import 'package:my_app/src/BackEnd/services/reuniones_service.dart';
 import 'package:my_app/src/pages/Reuniones/meeting_completion_handler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:my_app/src/models/reuniones_model.dart';
 import 'package:my_app/src/BackEnd/custom/zego_keys.dart';
 import 'package:zego_uikit_prebuilt_call/zego_uikit_prebuilt_call.dart';
+
 
 class JoinMeetingPage extends StatefulWidget {
   const JoinMeetingPage({Key? key}) : super(key: key);
@@ -23,6 +25,7 @@ class _JoinMeetingPageState extends State<JoinMeetingPage> with TickerProviderSt
   late Animation<Offset> _slideAnimation;
   
   final MeetingModel _model = MeetingModel();
+  final MeetingService _meetingService = MeetingService();
   final TextEditingController _roomIdController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
   
@@ -57,9 +60,15 @@ class _JoinMeetingPageState extends State<JoinMeetingPage> with TickerProviderSt
       curve: Curves.easeOutBack,
     ));
     
-    _checkUserRole();
-    _loadUpcomingMeetings();
     _initializeUserName();
+
+    // Espera a que se determine el rol antes de cargar reuniones
+    _initWithRole();
+  }
+
+  Future<void> _initWithRole() async {
+    await _checkUserRole();
+    await _loadUpcomingMeetings();
   }
 
   @override
@@ -131,137 +140,111 @@ class _JoinMeetingPageState extends State<JoinMeetingPage> with TickerProviderSt
   }
 
   Future<void> _loadUpcomingMeetings() async {
-    setState(() => _loadingMeetings = true);
-    
-    try {
-      final allMeetings = await _model.listMeetings();
-      final now = DateTime.now();
-      
-      final upcoming = allMeetings.where((meeting) {
-        final scheduledAt = DateTime.parse(meeting['scheduled_at']).toLocal();
-        final diffMinutes = scheduledAt.difference(now).inMinutes;
-        return diffMinutes > -60;
-      }).toList();
-      
-      // Ordenamiento inteligente por prioridad
-      upcoming.sort((a, b) {
-        final dateA = DateTime.parse(a['scheduled_at']).toLocal();
-        final dateB = DateTime.parse(b['scheduled_at']).toLocal();
-        final createdA = DateTime.parse(a['created_at'] ?? a['scheduled_at']).toLocal();
-        final createdB = DateTime.parse(b['created_at'] ?? b['scheduled_at']).toLocal();
-        
-        final diffMinutesA = dateA.difference(now).inMinutes;
-        final diffMinutesB = dateB.difference(now).inMinutes;
-        
-        // Prioridad 1: Reuniones en vivo
-        final isLiveA = diffMinutesA >= -15 && diffMinutesA <= 15;
-        final isLiveB = diffMinutesB >= -15 && diffMinutesB <= 15;
-        
-        if (isLiveA && !isLiveB) return -1;
-        if (!isLiveA && isLiveB) return 1;
-        
-        // Prioridad 2: Reuniones atrasadas
-        final isLateA = diffMinutesA < -15 && diffMinutesA >= -60;
-        final isLateB = diffMinutesB < -15 && diffMinutesB >= -60;
-        
-        if (isLateA && !isLateB) return -1;
-        if (!isLateA && isLateB) return 1;
-        
-        // Prioridad 3: Reuniones próximas
-        final isUpcomingSoonA = diffMinutesA > 15 && diffMinutesA <= 120;
-        final isUpcomingSoonB = diffMinutesB > 15 && diffMinutesB <= 120;
-        
-        if (isUpcomingSoonA && !isUpcomingSoonB) return -1;
-        if (!isUpcomingSoonA && isUpcomingSoonB) return 1;
-        
-        if (isLiveA && isLiveB) {
-          return diffMinutesA.abs().compareTo(diffMinutesB.abs());
-        }
-        
-        if (isLateA && isLateB) {
-          return diffMinutesB.compareTo(diffMinutesA);
-        }
-        
-        if (isUpcomingSoonA && isUpcomingSoonB) {
-          final hoursDiffA = diffMinutesA / 60;
-          final hoursDiffB = diffMinutesB / 60;
-          final hoursCreatedA = now.difference(createdA).inHours;
-          final hoursCreatedB = now.difference(createdB).inHours;
-          
-          if (hoursCreatedA < 1 && hoursCreatedB >= 1) return -1;
-          if (hoursCreatedB < 1 && hoursCreatedA >= 1) return 1;
-          
-          return hoursDiffA.compareTo(hoursDiffB);
-        }
-        
-        return createdB.compareTo(createdA);
-      });
-      
+    setState(() {
+      _loadingMeetings = true;
+    });
+
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
       setState(() {
-        _upcomingMeetings = upcoming;
+        _upcomingMeetings = [];
         _loadingMeetings = false;
       });
-      
-      _animationController.forward();
-    } catch (e) {
-      debugPrint('Error loading meetings: $e');
-      setState(() => _loadingMeetings = false);
-    }
-  }
-
-  Future<void> _joinMeeting(String roomId) async {
-    if (_nameController.text.trim().isEmpty) {
-      _showSnackBar('Ingresa tu nombre', isError: true);
       return;
     }
 
-    setState(() => _joiningMeeting = true);
+    List<Map<String, dynamic>> meetings = [];
+    if (_isEstudiante == true) {
+      meetings = await _model.reunionesAgendadasPorEstudiante(userId);
+    } else {
+      meetings = await _model.listMeetingsByTutor(userId);
+    }
+
+    setState(() {
+      _upcomingMeetings = meetings;
+      _loadingMeetings = false;
+    });
+  }
+
+  Future<void> _joinMeeting(String roomId) async {
+    final inicio = DateTime.now(); // ⏱️ INICIO
 
     try {
-      final userID = Supabase.instance.client.auth.currentUser?.id ?? 
-                   'user_${DateTime.now().millisecondsSinceEpoch}';
-      final userName = _nameController.text.trim();
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+      final esEstudiante = _isEstudiante ?? true;
 
-      debugPrint('[JOIN] 🚀 Iniciando reunión: $roomId');
-
-      await MeetingCompletionHandler.markParticipantJoined(roomId, userID, isStudent: _isEstudiante ?? true);
-
-      ZegoUIKitPrebuiltCallConfig config = ZegoUIKitPrebuiltCallConfig.oneOnOneVideoCall();
-
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ZegoUIKitPrebuiltCall(
-            appID: zegoAppID,
-            appSign: zegoAppSign,
-            userID: userID,
-            userName: userName,
-            callID: roomId,
-            config: config,
-            events: ZegoUIKitPrebuiltCallEvents(
-              onCallEnd: (ZegoCallEndEvent event, VoidCallback defaultAction) {
-                defaultAction();
-                _onCallEnd(roomId);
-              },
-            ),
-          ),
-        ),
+      final puedeUnirse = await _meetingService.puedeUnirseAReunion(
+        userId: userId,
+        meetingId: roomId,
+        esEstudiante: esEstudiante,
       );
 
-      await _onCallEnd(roomId);
-
-    } catch (e) {
-      debugPrint('[JOIN] ❌ Error en la reunión: $e');
-      
-      try {
-        await _onCallEnd(roomId);
-      } catch (completionError) {
-        debugPrint('[JOIN] ⚠️ Error adicional: $completionError');
+      if (!puedeUnirse) {
+        _showSnackBar('No tienes acceso a esta reunión', isError: true);
+        return;
       }
-      
-      _showSnackBar('Error al unirse: $e', isError: true);
-    } finally {
+
+      if (_nameController.text.trim().isEmpty) {
+        _showSnackBar('Ingresa tu nombre', isError: true);
+        return;
+      }
+
+      setState(() => _joiningMeeting = true);
+
+      try {
+        final userID = Supabase.instance.client.auth.currentUser?.id ?? 
+                     'user_${DateTime.now().millisecondsSinceEpoch}';
+        final userName = _nameController.text.trim();
+
+        debugPrint('[JOIN] 🚀 Iniciando reunión: $roomId');
+
+        await MeetingCompletionHandler.markParticipantJoined(roomId, userID, isStudent: _isEstudiante ?? true);
+
+        ZegoUIKitPrebuiltCallConfig config = ZegoUIKitPrebuiltCallConfig.oneOnOneVideoCall();
+
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ZegoUIKitPrebuiltCall(
+              appID: zegoAppID,
+              appSign: zegoAppSign,
+              userID: userID,
+              userName: userName,
+              callID: roomId,
+              config: config,
+              events: ZegoUIKitPrebuiltCallEvents(
+                onCallEnd: (ZegoCallEndEvent event, VoidCallback defaultAction) {
+                  defaultAction();
+                  _onCallEnd(roomId);
+                },
+              ),
+            ),
+          ),
+        );
+
+        await _onCallEnd(roomId);
+
+      } catch (e) {
+        debugPrint('[JOIN] ❌ Error en la reunión: $e');
+        
+        try {
+          await _onCallEnd(roomId);
+        } catch (completionError) {
+          debugPrint('[JOIN] ⚠️ Error adicional: $completionError');
+        }
+        
+        _showSnackBar('Error al unirse: $e', isError: true);
+      } finally {
+        setState(() => _joiningMeeting = false);
+      }
+    } catch (e) {
+      debugPrint('[JOIN] Error en la lógica de unión: $e');
       setState(() => _joiningMeeting = false);
+    } finally {
+      final fin = DateTime.now();
+      final duracion = fin.difference(inicio).inMilliseconds;
+      print('⏱️ Tiempo de respuesta al entrar a la reunión: $duracion ms');
     }
   }
 
@@ -278,9 +261,9 @@ class _JoinMeetingPageState extends State<JoinMeetingPage> with TickerProviderSt
         }
       }
       
-      final success = await MeetingCompletionHandler.completeMeeting(roomId);
+      final success = await MeetingModel().completeMeeting(roomId);
       
-      if (success) {
+      if (success != null) {
         debugPrint('[JOIN] ✅ Reunión marcada como completada');
         
         if (mounted) {
@@ -1370,4 +1353,23 @@ class _JoinMeetingPageState extends State<JoinMeetingPage> with TickerProviderSt
     
     _joinMeeting(_roomIdController.text.trim());
   }
+}
+
+Future<Map<String, dynamic>?> completeMeeting(String roomId) async {
+  final meeting = await Supabase.instance.client
+      .from('meetings')
+      .select('id')
+      .eq('room_id', roomId)
+      .maybeSingle();
+
+  if (meeting != null && meeting['id'] != null) {
+    final result = await Supabase.instance.client
+        .from('meetings')
+        .update({'status': 'completada'})
+        .eq('id', meeting['id'])
+        .select()
+        .maybeSingle();
+    return result;
+  }
+  return null;
 }

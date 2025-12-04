@@ -42,6 +42,7 @@ dependencies:
   flutter_pdfview: ^1.4.3
   webview_flutter: ^4.13.0
   flutter_chat_ui: ^2.9.1
+  
 
   # 🔥 FIX: versión compatible con intl 0.20.x
   syncfusion_flutter_pdfviewer: ^31.1.21
@@ -50,13 +51,27 @@ dependencies:
 
   # ZEGO
   zego_uikit_prebuilt_call: ^4.21.1
+  image: ^4.5.4
+  flag: ^7.0.2
+
+
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^3.0.2
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons : ^0.13.1
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/iconos/icono_color.png"
+  remove_alpha_ios: true
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+    - assets/iconos/icono_color.png
+    - assets/iconos/image.png

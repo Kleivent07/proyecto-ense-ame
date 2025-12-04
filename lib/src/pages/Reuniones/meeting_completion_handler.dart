@@ -23,6 +23,10 @@ class MeetingCompletionHandler extends StatefulWidget {
       final result = await meetingModel.completeMeeting(roomId);
       if (result != null) {
         debugPrint('[COMPLETION] ✅ Reunión $roomId marcada como completada');
+        await Supabase.instance.client
+          .from('meetings')
+          .update({'status': 'completada'})
+          .eq('room_id', roomId);
         return true;
       }
       return false;

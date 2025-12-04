@@ -117,4 +117,21 @@ class AuthService {
       return false;
     }
   }
+
+  /// Manejar errores de sesión
+  static Future<void> handleSessionError(Function normalLogic) async {
+    try {
+      // Lógica normal de la operación
+      await normalLogic();
+    } catch (e) {
+      if (e.toString().contains('JWT expired') || e.toString().contains('invalid_grant')) {
+        // Error de autenticación, cerrar sesión
+        await Supabase.instance.client.auth.signOut();
+        debugPrint('[AUTH] Sesión cerrada debido a error de autenticación: $e');
+      } else {
+        // Si no es error de autenticación, relanzar el error
+        rethrow;
+      }
+    }
+  }
 }

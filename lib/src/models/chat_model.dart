@@ -7,13 +7,20 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../BackEnd/custom/configuration.dart';
-import '../BackEnd/util/constants.dart'; // ✨ IMPORTAR CONSTANTES
+import '../BackEnd/util/constants.dart';
+import 'package:image/image.dart' as img;
+import 'package:my_app/src/BackEnd/services/notifications_service.dart';
+import 'package:my_app/src/models/profesores_model.dart';
+import 'package:my_app/src/models/estudiantes_model.dart';
 
 class ChatModel {
   final SupabaseClient _client = Supabase.instance.client;
   Timer? _pollTimer;
   String? _lastCreatedAt;
   String? _currentSolicitudId;
+  DateTime? _lastNotifyAt;
+  String? _lastNotifiedMessageId;
+  bool _isForeground = true;
 
   // Helper para conversión segura de tipos
   Map<String, dynamic> _safeMap(dynamic data) {
@@ -29,6 +36,24 @@ class ChatModel {
       return data.map((item) => _safeMap(item)).toList();
     }
     return [];
+  }
+
+  // ✨ MÉTODO DISPOSE MEJORADO
+  void dispose() {
+    try {
+      _pollTimer?.cancel();
+      _pollTimer = null;
+      _currentSolicitudId = null;
+      print('[CHAT] 🧹 Recursos limpiados correctamente');
+    } catch (e) {
+      print('[CHAT] ⚠️ Error limpiando recursos: $e');
+    }
+  }
+
+  // ✨ MÉTODO FALTANTE: Establecer solicitud actual
+  void setSolicitudActual(String solicitudId) {
+    _currentSolicitudId = solicitudId;
+    print('[CHAT] 📝 Solicitud actual establecida: $solicitudId');
   }
 
   // Verificar acceso a la solicitud
@@ -174,12 +199,11 @@ class ChatModel {
         'sender_id': estudianteId,
         'content': '📝 Solicitud inicial: $mensaje',
         'attachments': [],
-        'created_at': solicitudData['fecha_solicitud'], // Usar fecha original
+        'created_at': solicitudData['fecha_solicitud'],
+        'is_initial': true, // ← nuevo
       };
 
-      await _client
-          .from('chat_messages')
-          .insert(messageData);
+      await _client.from('chat_messages').insert(messageData);
           
       print('[CHAT] Mensaje inicial creado para solicitud $solicitudId');
       return true;
@@ -266,149 +290,353 @@ class ChatModel {
   }
 
   // Polling para nuevos mensajes
-  Future<void> startPolling(String solicitudId, void Function(Map<String, dynamic>) onNewMessage,
-      {Duration interval = const Duration(seconds: 3)}) async {
-    
-    if (!await hasAccessToSolicitud(solicitudId)) return;
-    
-    _currentSolicitudId = solicitudId;
-    _lastCreatedAt = null;
-    _pollTimer?.cancel();
+  Future<void> startPolling(
+  String solicitudId,
+  void Function(Map<String, dynamic>) onNewMessage,
+  {Duration interval = const Duration(seconds: 3)}
+) async {
+  if (!await hasAccessToSolicitud(solicitudId)) return;
 
-    _pollTimer = Timer.periodic(interval, (_) async {
-      try {
-        final response = await _client
-            .from('chat_messages')
-            .select('*')
-            .eq('solicitud_id', solicitudId)
-            .order('created_at', ascending: false)
-            .limit(10);
+  _currentSolicitudId = solicitudId;
+  _lastCreatedAt = null;
+  _pollTimer?.cancel();
 
-        final messages = _safeMapList(response);
-        
-        if (messages.isEmpty) return;
-        
-        final newest = messages.first['created_at']?.toString();
+  _pollTimer = Timer.periodic(interval, (_) async {
+    try {
+      final response = await _client
+          .from('chat_messages')
+          .select('*')
+          .eq('solicitud_id', solicitudId)
+          .order('created_at', ascending: false)
+          .limit(10);
 
-        // Primera vez: solo establecer timestamp
-        if (_lastCreatedAt == null) {
-          _lastCreatedAt = newest;
-          return;
-        }
+      final messages = _safeMapList(response);
 
-        // Emitir solo mensajes nuevos con nombres
-        for (var messageData in messages.reversed) {
-          final message = _safeMap(messageData);
-          final created = message['created_at']?.toString();
-          if (created != null && _lastCreatedAt != null && created.compareTo(_lastCreatedAt!) > 0) {
-            final senderId = message['sender_id']?.toString();
-            if (senderId != null && senderId.isNotEmpty) {
-              message['sender_name'] = await _getUserName(senderId);
-            }
-            onNewMessage(message);
-          }
-        }
+      if (messages.isEmpty) return;
 
-        _lastCreatedAt = newest ?? _lastCreatedAt;
-      } catch (e) {
-        print('[CHAT] Error en polling: $e');
+      final newest = messages.first['created_at']?.toString();
+
+      // Primera vez: solo establecer timestamp
+      if (_lastCreatedAt == null) {
+        _lastCreatedAt = newest;
+        return;
       }
-    });
+
+      // Emitir solo mensajes nuevos con nombres y mostrar notificación
+      for (var messageData in messages.reversed) {
+        final message = _safeMap(messageData);
+        final created = message['created_at']?.toString();
+        if (created != null && _lastCreatedAt != null && created.compareTo(_lastCreatedAt!) > 0) {
+          final senderId = message['sender_id']?.toString();
+          final currentUserId = _client.auth.currentUser?.id;
+          if (senderId != null && senderId.isNotEmpty) {
+            message['sender_name'] = await _getUserName(senderId);
+
+            // Solo mostrar notificación si el mensaje NO lo envió el usuario actual
+            if (currentUserId != null && senderId != currentUserId) {
+              String tipoRemitente = 'estudiante'; // Por defecto
+              final solicitudData = await loadSolicitudData(solicitudId);
+              if (solicitudData != null) {
+                if (senderId == solicitudData['profesor_id']?.toString()) {
+                  tipoRemitente = 'profesor';
+                } else if (senderId == solicitudData['estudiante_id']?.toString()) {
+                  tipoRemitente = 'estudiante';
+                }
+              }
+
+              final id = message['id']?.toString();
+              final isInitial = message['is_initial'] == true;
+              final now = DateTime.now();
+              final inCooldown = _lastNotifyAt != null && now.difference(_lastNotifyAt!) < const Duration(seconds: 10);
+
+              if (id == null || isInitial || senderId == currentUserId || inCooldown || id == _lastNotifiedMessageId) {
+                // no notificar
+              } else if (!_isForeground) {
+                // Determinar tipoRemitente como ya haces y avisar
+                await mostrarNotificacionMensajeNuevo(senderId, tipoRemitente);
+                _lastNotifiedMessageId = id;
+                _lastNotifyAt = now;
+              }
+            }
+          }
+          onNewMessage(message);
+        }
+      }
+
+      _lastCreatedAt = newest ?? _lastCreatedAt;
+    } catch (e) {
+      print('[CHAT] Error en polling: $e');
+    }
+  });
   }
 
-  // Subir archivos (CORREGIR URLs)
-  Future<List<Map<String, dynamic>>?> uploadFiles(List<PlatformFile> files) async {
+  // Subir archivos y guardarlos también en documentos - VERSIÓN OPTIMIZADA
+  Future<List<Map<String, dynamic>>?> uploadFiles(
+    List<PlatformFile> files, {
+    Function(int current, int total, String fileName)? onProgress,
+  }) async {
     try {
-      final List<Map<String, dynamic>> uploaded = [];
+      print('[CHAT] 🚀 Iniciando subida OPTIMIZADA de ${files.length} archivo(s)');
       
-      print('[CHAT] 🚀 Iniciando subida de ${files.length} archivo(s)');
-      print('[CHAT] 📦 Usando bucket: ${Constants.bucketAvatar}');
+      // ✨ 1. VALIDACIÓN RÁPIDA PRIMERO
+      final validFiles = files.where((f) => 
+        f.bytes != null || f.path != null).toList();
       
-      for (final file in files) {
-        if (file.bytes == null && file.path == null) {
-          print('[CHAT] ⚠️ Saltando archivo sin datos: ${file.name}');
-          continue;
-        }
-        
-        final Uint8List bytes = file.bytes ?? await File(file.path!).readAsBytes();
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final userId = _client.auth.currentUser?.id ?? 'anonymous';
-        final extension = file.name.split('.').last.toLowerCase();
-        final cleanName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        final uniqueName = '${timestamp}_${cleanName}';
-        final storagePath = 'chat_files/${userId}/$uniqueName';
-        
-        print('[CHAT] 📤 Subiendo: ${file.name} (${bytes.length} bytes)');
-        print('[CHAT] 📍 Ruta: $storagePath');
-        
+      if (validFiles.isEmpty) {
+        throw Exception('No hay archivos válidos para subir');
+      }
+      
+      // ✨ 2. OBTENER INFO DE SOLICITUD UNA SOLA VEZ
+      String? profesorId;
+      String? estudianteId;
+      
+      if (_currentSolicitudId != null) {
         try {
-          // ✨ SUBIR ARCHIVO CON CONFIGURACIÓN ESPECÍFICA
-          await _client.storage
-              .from(Constants.bucketAvatar)
-              .uploadBinary(
-                storagePath, 
-                bytes, 
-                fileOptions: FileOptions(
-                  contentType: _getFileTypeByExtension(extension),
-                  cacheControl: '3600',
-                  upsert: true, // ✨ PERMITIR SOBRESCRIBIR
-                )
-              );
-
-          // ✨ GENERAR URL PÚBLICA
-          final publicUrl = _client.storage
-              .from(Constants.bucketAvatar)
-              .getPublicUrl(storagePath);
+          final solicitudInfo = await _client
+              .from('solicitudes_tutorias')
+              .select('profesor_id, estudiante_id')
+              .eq('id', _currentSolicitudId!)
+              .single();
           
-          // ✨ VERIFICAR QUE LA URL FUNCIONA
-          print('[CHAT] 🔗 URL generada: $publicUrl');
-          
-          // ✨ TEST RÁPIDO DE LA URL
-          try {
-            final testResponse = await http.head(Uri.parse(publicUrl)).timeout(
-              const Duration(seconds: 5)
-            );
-            print('[CHAT] ✅ URL verificada - Status: ${testResponse.statusCode}');
-          } catch (testError) {
-            print('[CHAT] ⚠️ URL no verificable (pero continuando): $testError');
-          }
-          
-          uploaded.add({
-            'name': file.name,
-            'url': publicUrl,
-            'size': file.size,
-            'type': _getFileTypeFromName(file.name),
-            'storagePath': storagePath,
-            'extension': extension,
-          });
-          
-          print('[CHAT] ✅ Archivo subido: ${file.name}');
-          
-        } catch (uploadError) {
-          print('[CHAT] ❌ Error subiendo ${file.name}: $uploadError');
-          
-          // ✨ DIAGNOSTICAR ERROR ESPECÍFICO
-          final errorStr = uploadError.toString().toLowerCase();
-          if (errorStr.contains('bucket') || errorStr.contains('not found')) {
-            print('[CHAT] 🚨 ERROR: Bucket "${Constants.bucketAvatar}" no existe o no es accesible');
-          } else if (errorStr.contains('permission') || errorStr.contains('unauthorized')) {
-            print('[CHAT] 🚨 ERROR: Sin permisos para subir al bucket');
-          } else if (errorStr.contains('size') || errorStr.contains('large')) {
-            print('[CHAT] 🚨 ERROR: Archivo demasiado grande');
-          }
+          profesorId = solicitudInfo['profesor_id'];
+          estudianteId = solicitudInfo['estudiante_id'];
+          print('[CHAT] 📋 Info solicitud - Profesor: $profesorId, Estudiante: $estudianteId');
+        } catch (e) {
+          print('[CHAT] ⚠️ Error obteniendo info de solicitud: $e');
         }
       }
       
-      print('[CHAT] 📊 Resumen: ${uploaded.length}/${files.length} archivos subidos');
-      return uploaded.isNotEmpty ? uploaded : null;
+      // ✨ 3. SUBIDA EN LOTES (PARALELA)
+      const batchSize = 3; // Subir máximo 3 archivos en paralelo
+      final List<Map<String, dynamic>> allUploaded = [];
+      
+      for (int i = 0; i < validFiles.length; i += batchSize) {
+        final batch = validFiles.skip(i).take(batchSize).toList();
+        
+        // Subir lote en paralelo
+        final futures = batch.asMap().entries.map((entry) async {
+          final index = i + entry.key;
+          final file = entry.value;
+          
+          // ✨ CALLBACK DE PROGRESO
+          onProgress?.call(index + 1, validFiles.length, file.name);
+          
+          return await _uploadSingleFileOptimized(
+            file, 
+            profesorId, 
+            estudianteId,
+          );
+        });
+        
+        final batchResults = await Future.wait(futures);
+        allUploaded.addAll(batchResults.where((r) => r != null).cast<Map<String, dynamic>>());
+      }
+      
+      print('[CHAT] ✅ Subida completada: ${allUploaded.length}/${validFiles.length} archivos');
+      return allUploaded.isNotEmpty ? allUploaded : null;
       
     } catch (e) {
-      print('[CHAT] ❌ Error general en uploadFiles: $e');
+      print('[CHAT] ❌ Error en subida optimizada: $e');
+      rethrow;
+    }
+  }
+
+  // ✨ MÉTODO AUXILIAR NUEVO: Subir archivo individual optimizado
+  Future<Map<String, dynamic>?> _uploadSingleFileOptimized(
+    PlatformFile file,
+    String? profesorId,
+    String? estudianteId,
+  ) async {
+    try {
+      final stopwatch = Stopwatch()..start();
+      
+      // 1. Obtener bytes del archivo
+      final Uint8List bytes = file.bytes ?? await File(file.path!).readAsBytes();
+      
+      // 2. Comprimir si es necesario (imágenes)
+      final compressedBytes = await _compressFileIfNeeded(file, bytes);
+      
+      // 3. Generar nombre único optimizado
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final userId = _client.auth.currentUser?.id ?? 'anonymous';
+      final extension = file.name.split('.').last.toLowerCase();
+      final baseName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final uniqueName = '${timestamp}_${baseName}';
+      final storagePath = 'chat_files/${userId}/$uniqueName';
+      
+      // 4. Subir con configuración optimizada
+      await _client.storage
+          .from(Constants.bucketAvatar) // Usar bucket existente por ahora
+          .uploadBinary(
+            storagePath, 
+            compressedBytes, 
+            fileOptions: FileOptions(
+              contentType: _getFileTypeByExtension(extension),
+              cacheControl: '31536000', // Cache 1 año
+              upsert: false, // No sobrescribir (más rápido)
+            )
+          );
+
+      // 5. Generar URL pública
+      final publicUrl = _client.storage
+          .from(Constants.bucketAvatar)
+          .getPublicUrl(storagePath);
+    
+      final fileData = {
+        'name': file.name,
+        'url': publicUrl,
+        'size': compressedBytes.length,
+        'type': extension,
+        'storage_path': storagePath,
+        'original_size': file.size,
+        'upload_time_ms': stopwatch.elapsedMilliseconds,
+      };
+    
+      // 6. Guardar en documentos (en background)
+      if (profesorId != null && estudianteId != null) {
+        // ✨ NO ESPERAR - EJECUTAR EN BACKGROUND
+        _guardarArchivoComoDocumento(
+          profesorId: profesorId,
+          estudianteId: estudianteId,
+          nombreArchivo: file.name,
+          urlArchivo: publicUrl,
+          tipoArchivo: extension,
+          tamano: compressedBytes.length,
+        ).catchError((error) {
+          print('[CHAT] ⚠️ Error guardando en documentos (background): $error');
+        });
+      }
+      
+      stopwatch.stop();
+      print('[CHAT] ⚡ Archivo ${file.name} subido en ${stopwatch.elapsedMilliseconds}ms');
+      
+      return fileData;
+      
+    } catch (e) {
+      print('[CHAT] ❌ Error subiendo ${file.name}: $e');
       return null;
     }
   }
 
-  // ✨ MÉTODO MEJORADO PARA DETERMINAR TIPO DE ARCHIVO
+  // ✨ NUEVA FUNCIÓN: Comprimir archivos si es necesario - MEJORADA
+  Future<Uint8List> _compressFileIfNeeded(PlatformFile file, Uint8List originalBytes) async {
+    final extension = file.name.split('.').last.toLowerCase();
+    final originalSizeMB = originalBytes.length / (1024 * 1024);
+    
+    print('[CHAT] 📏 Archivo: ${file.name}');
+    print('[CHAT] 📊 Tamaño: ${originalSizeMB.toStringAsFixed(2)} MB');
+    
+    // ✨ LÍMITES MEJORADOS Y MÁS REALISTAS
+    const maxPdfSizeMB = 25; // 25MB para PDFs (más realista)
+    const maxImageSizeMB = 15; // 15MB para imágenes  
+    const maxVideoSizeMB = 50; // 50MB para videos
+    const maxOtherSizeMB = 20; // 20MB para otros archivos
+    
+    // Validar límites según tipo de archivo
+    switch (extension.toLowerCase()) {
+      case 'pdf':
+        if (originalSizeMB > maxPdfSizeMB) {
+          throw Exception('Archivo PDF muy grande (máximo ${maxPdfSizeMB}MB, actual: ${originalSizeMB.toStringAsFixed(1)}MB)');
+        }
+        break;
+        
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'bmp':
+      case 'gif':
+      case 'webp':
+        if (originalSizeMB > maxImageSizeMB) {
+          // ✨ INTENTAR COMPRIMIR IMÁGENES GRANDES
+          try {
+            print('[CHAT] 🖼️ Comprimiendo imagen grande...');
+            final compressedBytes = await _compressImage(originalBytes, extension);
+            final compressedSizeMB = compressedBytes.length / (1024 * 1024);
+            
+            if (compressedSizeMB <= maxImageSizeMB) {
+              print('[CHAT] ✅ Imagen comprimida: ${originalSizeMB.toStringAsFixed(2)}MB → ${compressedSizeMB.toStringAsFixed(2)}MB');
+              return compressedBytes;
+            } else {
+              throw Exception('Imagen muy grande incluso después de comprimir (máximo ${maxImageSizeMB}MB)');
+            }
+          } catch (e) {
+            print('[CHAT] ⚠️ Error comprimiendo imagen: $e');
+            throw Exception('Imagen muy grande (máximo ${maxImageSizeMB}MB, actual: ${originalSizeMB.toStringAsFixed(1)}MB)');
+          }
+        }
+        break;
+        
+      case 'mp4':
+      case 'mov':
+      case 'avi':
+      case 'mkv':
+        if (originalSizeMB > maxVideoSizeMB) {
+          throw Exception('Video muy grande (máximo ${maxVideoSizeMB}MB, actual: ${originalSizeMB.toStringAsFixed(1)}MB)');
+        }
+        break;
+        
+      default:
+        if (originalSizeMB > maxOtherSizeMB) {
+          throw Exception('Archivo muy grande (máximo ${maxOtherSizeMB}MB, actual: ${originalSizeMB.toStringAsFixed(1)}MB)');
+        }
+        break;
+    }
+    
+    return originalBytes;
+  }
+
+  // ✨ NUEVA FUNCIÓN: Comprimir imágenes usando la librería image
+  Future<Uint8List> _compressImage(Uint8List originalBytes, String extension) async {
+    try {
+      final image = img.decodeImage(originalBytes);
+      if (image == null) {
+        throw Exception('No se puede decodificar la imagen');
+      }
+      
+      // Calcular nuevo tamaño manteniendo proporción
+      int newWidth = image.width;
+      int newHeight = image.height;
+      
+      // Si es muy grande, redimensionar
+      const maxDimension = 1920;
+      if (image.width > maxDimension || image.height > maxDimension) {
+        if (image.width > image.height) {
+          newWidth = maxDimension;
+          newHeight = (image.height * maxDimension / image.width).round();
+        } else {
+          newHeight = maxDimension;
+          newWidth = (image.width * maxDimension / image.height).round();
+        }
+      }
+      
+      // Redimensionar si es necesario
+      img.Image resizedImage = image;
+      if (newWidth != image.width || newHeight != image.height) {
+        resizedImage = img.copyResize(image, width: newWidth, height: newHeight);
+        print('[CHAT] 📐 Redimensionado: ${image.width}x${image.height} → ${newWidth}x${newHeight}');
+      }
+      
+      // Comprimir con diferentes calidades según el tamaño original
+      int quality = 85;
+      final originalSizeMB = originalBytes.length / (1024 * 1024);
+      
+      if (originalSizeMB > 10) quality = 70;
+      if (originalSizeMB > 15) quality = 60;
+      if (originalSizeMB > 20) quality = 50;
+      
+      // Comprimir a JPEG (más eficiente)
+      final compressedBytes = img.encodeJpg(resizedImage, quality: quality);
+      
+      print('[CHAT] 🗜️ Compresión aplicada con calidad: $quality%');
+      return Uint8List.fromList(compressedBytes);
+      
+    } catch (e) {
+      print('[CHAT] ❌ Error en compresión de imagen: $e');
+      rethrow;
+    }
+  }
+
+  // ✨ MÉTODO FALTANTE: Obtener tipo MIME por extensión
   String _getFileTypeByExtension(String extension) {
     switch (extension.toLowerCase()) {
       case 'jpg':
@@ -420,26 +648,26 @@ class ChatModel {
         return 'image/gif';
       case 'webp':
         return 'image/webp';
+      case 'bmp':
+        return 'image/bmp';
       case 'pdf':
         return 'application/pdf';
       case 'doc':
         return 'application/msword';
       case 'docx':
         return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      case 'xls':
-        return 'application/vnd.ms-excel';
-      case 'xlsx':
-        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      case 'ppt':
-        return 'application/vnd.ms-powerpoint';
-      case 'pptx':
-        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
       case 'txt':
         return 'text/plain';
       case 'mp4':
         return 'video/mp4';
+      case 'mov':
+        return 'video/quicktime';
+      case 'avi':
+        return 'video/x-msvideo';
       case 'mp3':
         return 'audio/mpeg';
+      case 'wav':
+        return 'audio/wav';
       case 'zip':
         return 'application/zip';
       case 'rar':
@@ -449,45 +677,72 @@ class ChatModel {
     }
   }
 
-  String _getFileTypeFromName(String fileName) {
-    final extension = fileName.toLowerCase().split('.').last;
-    switch (extension) {
-      case 'jpg':
-      case 'jpeg':
-      case 'png':
-      case 'gif':
-      case 'webp':
-        return 'image';
-      case 'mp4':
-      case 'mov':
-      case 'avi':
-      case 'mkv':
-        return 'video';
-      case 'pdf':
-        return 'pdf';
-      case 'doc':
-      case 'docx':
-      case 'xls':
-      case 'xlsx':
-      case 'ppt':
-      case 'pptx':
-        return 'document';
-      case 'mp3':
-      case 'wav':
-      case 'flac':
-        return 'audio';
-      default:
-        return 'file';
+  // ✨ MÉTODO FALTANTE: Guardar archivo como documento
+  Future<void> _guardarArchivoComoDocumento({
+    required String profesorId,
+    required String estudianteId,
+    required String nombreArchivo,
+    required String urlArchivo,
+    required String tipoArchivo,
+    required int tamano,
+  }) async {
+    try {
+      final userId = _client.auth.currentUser?.id;
+      if (userId == null) {
+        print('[CHAT] ❌ No hay usuario autenticado para guardar documento');
+        return;
+      }
+
+      // Determinar emisor y receptor
+      String emisorId = userId;
+      String receptorId = userId == estudianteId ? profesorId : estudianteId;
+
+      print('[CHAT] 💾 Guardando documento: $nombreArchivo');
+      print('[CHAT] 📤 Emisor: $emisorId, Receptor: $receptorId');
+
+      // Insertar en la tabla documentos_compartidos
+      await _client.from('documentos_compartidos').insert({
+        'emisor_id': emisorId,
+        'receptor_id': receptorId,
+        'solicitud_id': _currentSolicitudId,
+        'nombre_archivo': nombreArchivo,
+        'url_archivo': urlArchivo,
+        'descripcion': 'Archivo enviado desde el chat',
+        'tipo_archivo': tipoArchivo,
+        'tamano': tamano,
+        'visto': false,
+        'fecha_subida': DateTime.now().toIso8601String(),
+      });
+
+      print('[CHAT] ✅ Documento guardado exitosamente');
+    } catch (e) {
+      print('[CHAT] ❌ Error guardando documento: $e');
     }
   }
 
-  void stopPolling() {
-    _pollTimer?.cancel();
-    _pollTimer = null;
-    _lastCreatedAt = null;
+  // Ejemplo en chat_page.dart o donde recibes el mensaje
+  Future<void> mostrarNotificacionMensajeNuevo(String remitenteId, String tipoRemitente) async {
+  String nombre = 'Usuario';
+
+  if (tipoRemitente == 'profesor' || tipoRemitente == 'tutor') {
+    final perfil = await ProfesorService().obtenerProfesor(remitenteId);
+    if (perfil != null) {
+      nombre = '${perfil['nombre'] ?? ''} ${perfil['apellido'] ?? ''}'.trim();
+    }
+  } else if (tipoRemitente == 'estudiante') {
+    final perfil = await EstudianteService().obtenerEstudiante(remitenteId);
+    if (perfil != null) {
+      nombre = '${perfil['nombre'] ?? ''} ${perfil['apellido'] ?? ''}'.trim();
+    }
   }
 
-  void dispose() {
-    stopPolling();
-  }
+  // Notificación con tipo y referencia
+  await NotificationsService.showNotification(
+    title: 'Mensaje nuevo',
+    body: 'Mensaje nuevo de $nombre',
+    userId: _client.auth.currentUser?.id, // ← destinatario: el usuario actual (receptor)
+    tipo: 'chat',
+    referenciaId: _currentSolicitudId,
+  );
+}
 }

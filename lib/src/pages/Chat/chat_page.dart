@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:get_it/get_it.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter/services.dart';
 
 // 🎯 Importar modelos y servicios
 import '../../models/chat_model.dart';
@@ -54,9 +55,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _chatModel.dispose();
     _messageController.dispose();
     _scrollController.dispose();
+    // ✨ LIMPIAR RECURSOS DEL CHAT MODEL
+    _chatModel.dispose();
     super.dispose();
   }
 
@@ -73,6 +75,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     try {
       setState(() => _isLoading = true);
 
+      // ✨ ESTABLECER SOLICITUD ACTUAL EN EL MODELO DE CHAT
+      _chatModel.setSolicitudActual(widget.solicitudId);
+
       // Verificar acceso
       if (!await _chatModel.hasAccessToSolicitud(widget.solicitudId)) {
         _showErrorAndExit('No tienes acceso a este chat');
@@ -88,15 +93,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       _messages = List.from(loadedMessages.reversed);
       
       await _loadOtherUserName();
+
+      // Configurar polling
+      _startMessagePolling();
       
       setState(() => _isLoading = false);
       
-      // Iniciar polling para nuevos mensajes
-      _startMessagePolling();
-      
+      // Hacer scroll al final
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+
     } catch (e) {
-      debugPrint('[ChatPage] Error inicializando: $e');
-      _showErrorAndExit('Error cargando el chat');
+      print('[CHAT] ❌ Error inicializando chat: $e');
+      _showErrorAndExit('Error cargando chat: $e');
     }
   }
 
@@ -137,6 +153,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   // 🎯 Iniciar polling de mensajes
   void _startMessagePolling() {
     _chatModel.startPolling(widget.solicitudId, (newMessage) {
+      // ✨ VERIFICAR ANTES DE setState
       if (mounted) {
         setState(() {
           _messages.insert(0, newMessage);
@@ -150,26 +167,42 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final text = _messageController.text.trim();
     if (text.isEmpty || _isSending) return;
 
+    // ✨ VERIFICAR SI SIGUE MONTADO
+    if (!mounted) return;
+
     setState(() => _isSending = true);
     _messageController.clear();
 
     try {
       final success = await _chatModel.sendMessage(widget.solicitudId, text);
       
+      // ✨ VERIFICAR ANTES DE MOSTRAR MENSAJES
+      if (!mounted) return;
+      
       if (success) {
         _showSuccess('Mensaje enviado');
+        // Recargar mensajes inmediatamente
+        final loadedMessages = await _chatModel.loadMessages(widget.solicitudId);
+        if (mounted) {
+          setState(() {
+            _messages = List.from(loadedMessages.reversed);
+          });
+        }
       } else {
         _showError('Error enviando mensaje');
       }
     } catch (e) {
       debugPrint('[ChatPage] Error enviando mensaje: $e');
-      _showError('Error enviando mensaje');
+      if (mounted) _showError('Error enviando mensaje');
     } finally {
-      setState(() => _isSending = false);
+      // ✨ VERIFICAR ANTES DE setState
+      if (mounted) {
+        setState(() => _isSending = false);
+      }
     }
   }
 
-  // 🎯 Seleccionar y enviar archivos
+  // 🎯 Seleccionar y enviar archivos - VERSIÓN MEJORADA
   Future<void> _sendFiles() async {
     if (_isUploading) return;
 
@@ -181,39 +214,221 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
 
       if (result == null || result.files.isEmpty) return;
+      if (!mounted) return;
 
-      setState(() => _isUploading = true);
-
-      // Subir archivos
-      final uploadedFiles = await _chatModel.uploadFiles(result.files);
-      
-      if (uploadedFiles == null || uploadedFiles.isEmpty) {
-        _showError('Error subiendo archivos');
+      // ✨ VALIDAR ARCHIVOS ANTES DE SUBIR
+      final validationResult = _validateFiles(result.files);
+      if (validationResult.hasErrors) {
+        _showFileValidationDialog(validationResult);
         return;
       }
 
-      // Enviar mensaje con archivos adjuntos
-      final fileNames = uploadedFiles.map((f) => f['name']).join(', ');
-      final message = '📎 Archivos adjuntos: $fileNames';
+      setState(() => _isUploading = true);
+      _showUploadPreview(result.files);
+
+      final uploadedFiles = await _chatModel.uploadFiles(
+        result.files,
+        onProgress: (current, total, fileName) {
+          if (!mounted) return;
+          _updateUploadProgress(current, total, fileName);
+        },
+      );
       
-      final success = await _chatModel.sendMessage(
+      if (!mounted) return;
+      
+      if (uploadedFiles == null || uploadedFiles.isEmpty) {
+        if (mounted) _showError('No se pudieron subir los archivos');
+        return;
+      }
+
+      // Enviar mensaje con archivos
+      final fileNames = uploadedFiles.map((f) => f['name']).join(', ');
+      final message = '📎 ${uploadedFiles.length} archivo(s): $fileNames';
+      
+      _chatModel.sendMessage(
         widget.solicitudId,
         message,
         attachments: uploadedFiles,
-      );
-
-      if (success) {
-        _showSuccess('Archivos enviados');
-      } else {
-        _showError('Error enviando archivos');
-      }
+      ).then((success) {
+        if (mounted) {
+          if (success) {
+            _showSuccess('✅ ${uploadedFiles.length} archivo(s) enviado(s)');
+          } else {
+            _showError('❌ Error enviando archivos al chat');
+          }
+        }
+      });
 
     } catch (e) {
       debugPrint('[ChatPage] Error enviando archivos: $e');
-      _showError('Error enviando archivos');
+      if (mounted) {
+        // ✨ MOSTRAR ERROR MÁS ESPECÍFICO
+        String errorMessage = 'Error subiendo archivos';
+        if (e.toString().contains('muy grande')) {
+          errorMessage = e.toString().replaceAll('Exception: ', '');
+        }
+        _showError(errorMessage);
+      }
     } finally {
-      setState(() => _isUploading = false);
+      if (mounted) {
+        setState(() => _isUploading = false);
+        _hideUploadPreview();
+      }
     }
+  }
+
+  // ✨ MOSTRAR PREVIEW INMEDIATO
+  void _showUploadPreview(List<PlatformFile> files) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text('Subiendo ${files.length} archivo(s)...'),
+            ),
+          ],
+        ),
+        duration: Duration(seconds: 10),
+        backgroundColor: Constants.colorPrimary,
+      ),
+    );
+  }
+
+  // ✨ MEJORAR el método _updateUploadProgress
+  void _updateUploadProgress(int current, int total, String fileName) {
+    print('[CHAT] 📤 Progreso: $current/$total - $fileName');
+    
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: current / total,
+                backgroundColor: Colors.white24,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Subiendo archivos... ($current/$total)'),
+                  Text(
+                    fileName.length > 30 
+                      ? '${fileName.substring(0, 27)}...' 
+                      : fileName,
+                    style: TextStyle(fontSize: 12, color: Colors.white70),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        duration: Duration(seconds: 30),
+        backgroundColor: Constants.colorPrimary,
+      ),
+    );
+  }
+
+  // ✨ MÉTODO FALTANTE: Ocultar preview de subida
+  void _hideUploadPreview() {
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+  }
+
+  // ✨ NUEVA FUNCIÓN: Validar archivos antes de subir
+  FileValidationResult _validateFiles(List<PlatformFile> files) {
+    final result = FileValidationResult();
+    
+    for (final file in files) {
+      final sizeMB = (file.size) / (1024 * 1024);
+      final extension = file.name.split('.').last.toLowerCase();
+      
+      // Límites por tipo de archivo
+      double maxSizeMB;
+      switch (extension) {
+        case 'pdf':
+          maxSizeMB = 25;
+          break;
+        case 'jpg':
+        case 'jpeg':
+        case 'png':
+        case 'bmp':
+        case 'gif':
+        case 'webp':
+          maxSizeMB = 15;
+          break;
+        case 'mp4':
+        case 'mov':
+        case 'avi':
+        case 'mkv':
+          maxSizeMB = 50;
+          break;
+        default:
+          maxSizeMB = 20;
+          break;
+      }
+      
+      if (sizeMB > maxSizeMB) {
+        result.addError(file.name, 'Muy grande (${sizeMB.toStringAsFixed(1)}MB, máximo ${maxSizeMB}MB)');
+      } else {
+        result.addValid(file.name);
+      }
+    }
+    
+    return result;
+  }
+
+  // ✨ NUEVA FUNCIÓN: Mostrar diálogo de validación
+  void _showFileValidationDialog(FileValidationResult result) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Archivos no válidos'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (result.validFiles.isNotEmpty) ...[
+              Text('✅ Archivos válidos:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.green)),
+              ...result.validFiles.map((name) => Text('• $name')),
+              SizedBox(height: 12),
+            ],
+            if (result.errorFiles.isNotEmpty) ...[
+              Text('❌ Archivos rechazados:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+              ...result.errorFiles.entries.map((entry) => 
+                Text('• ${entry.key}: ${entry.value}', style: TextStyle(fontSize: 12))),
+            ],
+          ],
+        ),
+        actions: [
+          if (result.validFiles.isNotEmpty) 
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // Aquí podrías permitir subir solo los válidos
+              },
+              child: Text('Subir válidos (${result.validFiles.length})'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('Cancelar'),
+          ),
+        ],
+      ),
+    );
   }
 
   // 🎯 Abrir archivo
@@ -236,8 +451,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  // 🎯 UI Helpers
+  // 🎯 UI Helpers - CON VERIFICACIONES DE MOUNTED
   void _showSuccess(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -248,6 +464,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showError(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -258,6 +475,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _showErrorAndExit(String message) {
+    if (!mounted) return;
     _showError(message);
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) Navigator.pop(context);
@@ -268,18 +486,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return Scaffold(
       key: _scaffoldKey,
-      backgroundColor: Constants.colorPrimaryDark, // 🎯 Igual que reuniones
+      backgroundColor: Constants.colorPrimaryDark,
       extendBodyBehindAppBar: true,
       appBar: _buildAppBar(),
       body: Container(
-        // 🎯 MISMO GRADIENTE QUE REUNIONES
         decoration: BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Constants.colorPrimaryDark, // Igual que reuniones
-              Constants.colorPrimary, // Igual que reuniones
+              Constants.colorPrimaryDark,
+              Constants.colorPrimary,
             ],
           ),
         ),
@@ -534,31 +751,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         children: [
           // Avatar del otro usuario
-          if (!isMe && showAvatar)
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Constants.colorButton, Constants.colorOnPrimary],
-                ),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Constants.colorBackground, width: 2),
-              ),
-              child: Center(
-                child: Text(
-                  senderName.isNotEmpty ? senderName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+          (!isMe && showAvatar)
+              ? Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Constants.colorButton, Constants.colorOnPrimary],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Constants.colorBackground, width: 2),
                   ),
-                ),
-              ),
-            )
-          else if (!isMe)
-            const SizedBox(width: 32),
-          
+                  child: Center(
+                    child: Text(
+                      senderName.isNotEmpty ? senderName[0].toUpperCase() : '?',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                )
+              : (!isMe
+                  ? const SizedBox(width: 32)
+                  : const SizedBox.shrink()),
+
           const SizedBox(width: 8),
           
           // Contenido del mensaje
@@ -610,12 +828,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   
                   // Contenido del mensaje
                   if (content.isNotEmpty)
-                    Text(
-                      content,
-                      style: TextStyle(
-                        color: isMe ? Constants.colorBackground : Constants.colorFont,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w400,
+                    GestureDetector(
+                      onLongPress: () {
+                        Clipboard.setData(ClipboardData(text: content));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Mensaje copiado')),
+                        );
+                      },
+                      child: SelectableText(
+                        content,
+                        style: TextStyle(
+                          color: isMe ? Constants.colorBackground : Constants.colorFont,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w400,
+                        ),
                       ),
                     ),
                   
@@ -670,7 +896,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           else if (isMe)
             const SizedBox(width: 32),
         ],
-      ),
+      )
     );
   }
 
@@ -858,7 +1084,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ],
           ),
         ],
-      ),
+      )
     );
   }
 
@@ -871,13 +1097,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Constants.colorPrimaryDark.withOpacity(0.95), // 🎯 Más oscuro
-            Constants.colorPrimary.withOpacity(0.9), // 🎯 Más oscuro
+            Constants.colorPrimaryDark.withOpacity(0.95),
+            Constants.colorPrimary.withOpacity(0.9),
           ],
         ),
         border: Border(
           top: BorderSide(
-            color: Constants.colorBackground.withOpacity(0.1), // 🎯 Línea más sutil
+            color: Constants.colorBackground.withOpacity(0.1),
             width: 1,
           ),
         ),
@@ -897,7 +1123,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Constants.colorBackground.withOpacity(0.15), // 🎯 Ajustado para fondo oscuro
+                    Constants.colorBackground.withOpacity(0.15),
                     Constants.colorBackground.withOpacity(0.08),
                   ],
                 ),
@@ -920,7 +1146,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       )
                     : Icon(
                         Icons.attach_file_rounded,
-                        color: Constants.colorBackground, // 🎯 Icono blanco para contraste
+                        color: Constants.colorBackground,
                         size: 22,
                       ),
               ),
@@ -933,7 +1159,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: Constants.colorBackground.withOpacity(0.15), // 🎯 Fondo más oscuro pero legible
+                  color: Constants.colorBackground.withOpacity(0.15),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
                     color: Constants.colorBackground.withOpacity(0.25),
@@ -943,14 +1169,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 child: TextField(
                   controller: _messageController,
                   style: Constants.textStyleFont.copyWith(
-                    color: Constants.colorBackground, // 🎯 Texto blanco
+                    color: Constants.colorBackground,
                   ),
                   maxLines: null,
                   textCapitalization: TextCapitalization.sentences,
                   decoration: InputDecoration(
                     hintText: 'Escribe un mensaje...',
                     hintStyle: Constants.textStyleFont.copyWith(
-                      color: Constants.colorBackground.withOpacity(0.6), // 🎯 Hint más claro
+                      color: Constants.colorBackground.withOpacity(0.6),
                     ),
                     border: InputBorder.none,
                     isDense: true,
@@ -969,7 +1195,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 gradient: LinearGradient(
                   colors: _isSending
                       ? [Constants.colorBackground.withOpacity(0.3), Constants.colorBackground.withOpacity(0.3)]
-                      : [Constants.colorAccent, Constants.colorRosa], // 🎯 Colores más vibrantes para contraste
+                      : [Constants.colorAccent, Constants.colorRosa],
                 ),
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: _isSending ? null : [
@@ -1018,4 +1244,16 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return '${dateTime.day}/${dateTime.month} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
     }
   }
+}
+
+// ✨ CLASE AUXILIAR: Resultado de validación de archivos
+class FileValidationResult {
+  final List<String> validFiles = [];
+  final Map<String, String> errorFiles = {};
+  
+  void addValid(String fileName) => validFiles.add(fileName);
+  void addError(String fileName, String error) => errorFiles[fileName] = error;
+  
+  bool get hasErrors => errorFiles.isNotEmpty;
+  bool get hasValid => validFiles.isNotEmpty;
 }

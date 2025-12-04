@@ -127,6 +127,13 @@ class _ChatListPageState extends State<ChatListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final sortedConversations = List<Map<String, dynamic>>.from(_conversations);
+    sortedConversations.sort((a, b) {
+      final fechaA = a['last_message']?['created_at'] ?? '';
+      final fechaB = b['last_message']?['created_at'] ?? '';
+      return fechaB.compareTo(fechaA); // Más reciente arriba
+    });
+
     return Scaffold(
       backgroundColor: Constants.colorPrimaryDark,
       appBar: AppBar(
@@ -142,14 +149,14 @@ class _ChatListPageState extends State<ChatListPage> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _conversations.isEmpty
+          : sortedConversations.isEmpty
               ? _buildEmptyState()
               : RefreshIndicator(
                   onRefresh: _loadConversations,
                   child: ListView.builder(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _conversations.length,
-                    itemBuilder: (context, index) => _buildConversationItem(_conversations[index]),
+                    itemCount: sortedConversations.length,
+                    itemBuilder: (context, index) => _buildConversationItem(sortedConversations[index]),
                   ),
                 ),
       bottomNavigationBar: CustomBottomNavBar(
@@ -193,24 +200,27 @@ class _ChatListPageState extends State<ChatListPage> {
   }
 
   Widget _buildConversationItem(Map<String, dynamic> conversation) {
-    // Casting más seguro
     final solicitudData = conversation['solicitud'];
     final solicitud = solicitudData is Map<String, dynamic> 
         ? solicitudData 
         : Map<String, dynamic>.from(solicitudData as Map);
-        
+
     final lastMessageData = conversation['last_message'];
     final lastMessage = lastMessageData != null && lastMessageData is Map<String, dynamic>
         ? lastMessageData
         : (lastMessageData != null ? Map<String, dynamic>.from(lastMessageData as Map) : null);
-    
-    // USAR EL NOMBRE DEL OTRO USUARIO
+
+    // Contador de mensajes
+    final mensajesCount = (conversation['mensajes'] is List)
+        ? (conversation['mensajes'] as List).length
+        : (conversation['mensajes_count'] ?? 0);
+
     final title = solicitud['other_user_name']?.toString() ?? 'Usuario';
     final subtitle = solicitud['mensaje']?.toString().isNotEmpty == true 
         ? 'Solicitud: ${solicitud['mensaje']?.toString()}'
         : 'Solicitud de tutoría';
     final hasMessages = lastMessage != null;
-    
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -240,12 +250,10 @@ class _ChatListPageState extends State<ChatListPage> {
           ),
         ),
         title: Text(
-          title,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Constants.colorFont,
-            fontSize: 16,
-          ),
+          mensajesCount > 0
+            ? '$title (${mensajesCount} mensajes)'
+            : title, // Solo muestra el contador si hay al menos 1 mensaje
+          style: const TextStyle(fontWeight: FontWeight.bold),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),

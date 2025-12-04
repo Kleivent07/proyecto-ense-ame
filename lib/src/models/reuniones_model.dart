@@ -1,5 +1,10 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:my_app/src/BackEnd/services/notifications_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/timezone.dart' as tz;
+import 'package:flutter/services.dart';
+import 'package:flutter/material.dart';
 
 /// Modelo para manejar las reuniones en Supabase (tabla `meetings`).
 class MeetingModel {
@@ -69,14 +74,17 @@ class MeetingModel {
     }
   }
 
+
   Future<Map<String, dynamic>?> createMeeting({
     required String tutorName,
-    String? studentName,
+    required String studentName,
+    required String studentId, // <-- AGREGA ESTE PARÁMETRO
     required String roomId,
     String? subject,
     required DateTime scheduledAt,
     String? tutorId,
     String? token,
+    required BuildContext context,
   }) async {
     return await _executeWithRetry(() async {
       try {
@@ -90,12 +98,56 @@ class MeetingModel {
           'room_id': roomId,
           'subject': subject,
           'scheduled_at': scheduledAt.toUtc().toIso8601String(),
-          // ✅ Solo agregar token si existe en el esquema
           if (token != null) 'token': token,
         };
 
         final res = await _client.from('meetings').insert(payload).select().maybeSingle();
-        if (res is Map<String, dynamic>) return res;
+        if (res is Map<String, dynamic>) {
+          // 👇 INSERTA EN student_meetings
+          if (studentId.isNotEmpty && res['id'] != null) {
+            await _client.from('student_meetings').insert({
+              'student_id': studentId,
+              'meeting_id': res['id'],
+            });
+
+            // Notificación para el estudiante
+            await NotificationsService.showNotification(
+              title: 'Reunión agendada',
+              body: 'Tu reunión ha sido agendada exitosamente.',
+              userId: studentId,
+              tipo: 'reunion',
+              referenciaId: res['id'],
+            );
+            await programarNotificacionReunion(
+              titulo: 'Reunión próxima',
+              mensaje: 'Tu reunión comienza ahora.',
+              fechaReunion: scheduledAt.toLocal(),
+              context: context,
+              userId: studentId,
+              tipo: 'reunion',
+              referenciaId: res['id'],
+            );
+          }
+
+          // Notificar al profesor y guardar en la base de datos
+          await NotificationsService.showNotification(
+            title: 'Reunión creada',
+            body: '¡Tu reunión ha sido creada exitosamente!',
+            userId: currentUserId,
+            tipo: 'reunion',
+            referenciaId: res['id'],
+          );
+          await programarNotificacionReunion(
+            titulo: 'Reunión próxima',
+            mensaje: 'Tu reunión comienza ahora.',
+            fechaReunion: scheduledAt.toLocal(),
+            context: context,
+            userId: currentUserId,
+            tipo: 'reunion',
+            referenciaId: res['id'],
+          );
+          return res;
+        }
         return null;
       } catch (e, st) {
         debugPrint('Error creating meeting: $e\n$st');
@@ -105,7 +157,8 @@ class MeetingModel {
   }
 
   Future<List<Map<String, dynamic>>> listMeetings() async {
-    return await _executeListWithRetry(() async {
+    final inicio = DateTime.now();
+    final resultado = await _executeListWithRetry(() async {
       try {
         final resp = await _client.from('meetings').select().order('scheduled_at', ascending: false);
         if (resp is List) {
@@ -117,6 +170,10 @@ class MeetingModel {
         return [];
       }
     });
+    final fin = DateTime.now();
+    final duracion = fin.difference(inicio).inMilliseconds;
+    print('⏱️ Tiempo de respuesta listMeetings: ${duracion} ms');
+    return resultado;
   }
 
   Future<List<Map<String, dynamic>>> listMeetingsByTutor([String? tutorId]) async {
@@ -263,7 +320,6 @@ class MeetingModel {
     return await _executeWithRetry(() async {
       try {
         debugPrint('[MEETINGS] 🔍 Buscando reunión con roomId: $roomId');
-        
         final meeting = await findByRoom(roomId);
         if (meeting == null) {
           debugPrint('[MEETINGS] ❌ No se encontró reunión con roomId: $roomId');
@@ -272,22 +328,19 @@ class MeetingModel {
 
         debugPrint('[MEETINGS] 📋 Reunión encontrada: ${meeting['subject']} - ${meeting['tutor_name']}');
 
-        // ✅ Usar solo campos que definitivamente existen
-        // Marcar como completada modificando student_name
+        // Marcar como completada modificando status y student_name
         final completionMarker = 'COMPLETED_${DateTime.now().millisecondsSinceEpoch}';
-        
-        debugPrint('[MEETINGS] 💾 Marcando reunión como completada usando solo student_name');
 
         final updatedMeeting = await _client.from('meetings').update({
-          // ✅ Solo usar student_name, sin updated_at
           'student_name': completionMarker,
+          'status': 'completada', // <-- ESTA LÍNEA ES CLAVE
         }).eq('room_id', roomId).select().maybeSingle();
 
         if (updatedMeeting is Map<String, dynamic>) {
           debugPrint('[MEETINGS] ✅ Reunión $roomId marcada como completada');
           return Map<String, dynamic>.from(updatedMeeting);
         }
-        
+
         debugPrint('[MEETINGS] ❌ No se pudo actualizar la reunión $roomId');
         return null;
       } catch (e) {
@@ -372,4 +425,55 @@ class MeetingModel {
       }
     });
   }
+  Future<void> programarNotificacionReunion({
+    required String titulo,
+    required String mensaje,
+    required DateTime fechaReunion, // DEBE SER LOCAL
+    required BuildContext context,
+    String? userId,
+    String? tipo,
+    String? referenciaId,
+  }) async {
+    await NotificationsService.programarNotificacionReunion(
+      titulo: titulo,
+      mensaje: mensaje,
+      fechaReunion: fechaReunion,
+      context: context,
+      userId: userId,
+      tipo: tipo ?? 'reunion',
+      referenciaId: referenciaId,
+    );
+  }
+
+  /// Verifica si un estudiante tiene acceso a una reunión
+  Future<bool> estudianteTieneAccesoAReunion(String studentId, String meetingId) async {
+    final existe = await Supabase.instance.client
+        .from('student_meetings')
+        .select()
+        .eq('student_id', studentId)
+        .eq('meeting_id', meetingId)
+        .maybeSingle();
+    return existe != null;
+  }
+
+  /// Lista reuniones agendadas por estudiante
+  Future<List<Map<String, dynamic>>> reunionesAgendadasPorEstudiante(String studentId) async {
+    final relaciones = await Supabase.instance.client
+        .from('student_meetings')
+        .select('meeting_id')
+        .eq('student_id', studentId);
+
+    if (relaciones == null || relaciones.isEmpty) return [];
+
+    final ids = relaciones.map((r) => r['meeting_id']).toList();
+    if (ids.isEmpty) return [];
+
+    final reuniones = await Supabase.instance.client
+        .from('meetings')
+        .select()
+        .inFilter('id', ids);
+
+    return List<Map<String, dynamic>>.from(reuniones);
+  }
 }
+

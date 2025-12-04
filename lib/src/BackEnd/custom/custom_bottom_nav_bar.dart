@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:my_app/src/pages/Reuniones/reuniones_home_page.dart';
+import 'package:my_app/src/pages/Documentos/documentos_whatsapp_page.dart'; // ✨ CAMBIO AQUÍ
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'library.dart';
@@ -119,7 +120,12 @@ class CustomBottomNavBar extends StatelessWidget {
             break;
             
           case 1:
-            debugPrint('[NAVBAR] Documentos - No implementado');
+            // ✨ DOCUMENTOS - Nueva página tipo WhatsApp
+            debugPrint('[NAVBAR] Navegando a Documentos WhatsApp');
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const DocumentosWhatsappPage()),
+            );
             break;
             
           case 2:

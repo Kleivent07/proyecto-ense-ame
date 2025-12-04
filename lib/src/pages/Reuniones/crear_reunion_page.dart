@@ -1,7 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:my_app/src/BackEnd/custom/notifications_service.dart';
+import 'package:my_app/src/BackEnd/services/notifications_service.dart';
 import 'package:my_app/src/BackEnd/custom/zego_keys.dart';
 import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
@@ -9,6 +9,7 @@ import 'package:my_app/src/models/reuniones_model.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:zego_uikit_prebuilt_call/zego_uikit_prebuilt_call.dart';
 import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class CreateMeetingPage extends StatefulWidget {
   const CreateMeetingPage({Key? key}) : super(key: key);
@@ -81,42 +82,18 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
       initialDate: DateTime.now().toLocal(),
       firstDate: DateTime.now().toLocal(),
       lastDate: DateTime(DateTime.now().year + 3),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: Constants.colorPrimary,
-              onPrimary: Constants.colorBackground,
-              surface: Constants.colorBackground,
-              onSurface: Constants.colorFont,
-            ),
-          ),
-          child: child!,
-        );
-      },
     );
     if (picked != null) {
       final time = await showTimePicker(
-        context: context, 
+        context: context,
         initialTime: TimeOfDay.now(),
-        builder: (context, child) {
-          return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: ColorScheme.light(
-                primary: Constants.colorPrimary,
-                onPrimary: Constants.colorBackground,
-                surface: Constants.colorBackground,
-                onSurface: Constants.colorFont,
-              ),
-            ),
-            child: child!,
-          );
-        },
       );
       if (time != null) {
-        setState(() => _selectedDate = DateTime(picked.year, picked.month, picked.day, time.hour, time.minute));
-      } else {
-        setState(() => _selectedDate = DateTime(picked.year, picked.month, picked.day));
+        // ¡Asegúrate de NO usar .toUtc() aquí!
+        setState(() => _selectedDate = DateTime(
+          picked.year, picked.month, picked.day, time.hour, time.minute
+        ));
+        print('Fecha seleccionada (local): $_selectedDate');
       }
     }
   }
@@ -133,59 +110,53 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
 
     setState(() => _saving = true);
 
-    final roomId = 'room_${DateTime.now().millisecondsSinceEpoch}_${_tutorCtrl.text.replaceAll(' ', '_')}';
+    final roomId = '${_tutorCtrl.text.trim().replaceAll(' ', '_')}_${DateTime.now().millisecondsSinceEpoch}';
     final tutorId = Supabase.instance.client.auth.currentUser?.id;
 
     try {
+      // Usar el modelo (createMeeting) para mantener lógica de student_meetings y notificaciones
       final created = await _model.createMeeting(
         tutorName: _tutorCtrl.text.trim(),
+        studentName: '', // sin estudiante asignado al crear como prof
+        studentId: '',   // vacío -> el modelo no insertará student_meetings
         roomId: roomId,
         subject: _subjectCtrl.text.trim(),
-        scheduledAt: _selectedDate!.toUtc(),
+        scheduledAt: _selectedDate!,
         tutorId: tutorId,
+        context: context,
       );
 
-      setState(() {
-        _saving = false;
-        _createdRoomId = created?['room_id']?.toString() ?? roomId;
-      });
-
       if (created != null) {
-        // Programar notificaciones
-        final scheduledRaw = created['scheduled_at'] as String?;
-        if (scheduledRaw != null) {
-          try {
-            final scheduledUtc = DateTime.parse(scheduledRaw).toUtc();
-            final notifIdStart = (_createdRoomId ?? roomId).hashCode;
-            await NotificationsService.scheduleNotification(
-              notifIdStart,
-              'Reunión iniciada',
-              '${_subjectCtrl.text.isEmpty ? 'Tutoría' : _subjectCtrl.text} — ${DateFormat('dd/MM/yyyy – HH:mm').format(scheduledUtc.toLocal())}',
-              scheduledUtc,
-              payload: _createdRoomId,
-            );
-            final reminderUtc = scheduledUtc.subtract(const Duration(minutes: 10));
-            if (reminderUtc.isAfter(DateTime.now().toUtc())) {
-              await NotificationsService.scheduleNotification(
-                notifIdStart + 1,
-                'Recordatorio: reunión en 10 min',
-                '${_subjectCtrl.text.isEmpty ? 'Tutoría' : _subjectCtrl.text}',
-                reminderUtc,
-                payload: _createdRoomId,
-              );
-            }
-          } catch (e) {
-            debugPrint('No se pudo programar notificaciones: $e');
-          }
+        setState(() {
+          _saving = false;
+          _createdRoomId = created['room_id'];
+        });
+
+        // Mostrar notificación inmediata al profesor (si no se creó dentro del modelo por alguna razón)
+        final profId = tutorId;
+        if (profId != null) {
+          await NotificationsService.showNotification(
+            title: 'Reunión creada',
+            body: 'Se creó la reunión "${_subjectCtrl.text.trim().isEmpty ? 'Tutoría' : _subjectCtrl.text.trim()}" para ${DateFormat('dd/MM/yyyy • HH:mm').format(_selectedDate!.toLocal())}.',
+            userId: profId,
+            tipo: 'reunion',
+            referenciaId: created['id']?.toString(),
+          );
         }
-        _showSnackBar('¡Reunión creada exitosamente!', isError: false);
+
+        // limpiar formulario
+        _tutorCtrl.clear();
+        _subjectCtrl.clear();
+        _selectedDate = null;
       } else {
-        _showSnackBar('Error creando reunión', isError: true);
+        setState(() => _saving = false);
+        debugPrint("❌ No se pudo crear reunión (modelo devolvió null)");
+        _showSnackBar('Error creando la reunión', isError: true);
       }
-    } catch (e, st) {
-      debugPrint('Error en _create: $e\n$st');
+    } catch (e) {
       setState(() => _saving = false);
-      _showSnackBar('Ocurrió un error al crear la reunión', isError: true);
+      debugPrint("❌ Error insertando reunión: $e");
+      _showSnackBar('Error creando la reunión: $e', isError: true);
     }
   }
 
@@ -744,26 +715,19 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
     return Container(
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Constants.colorRosaLight.withOpacity(0.1),
-            Constants.colorRosa.withOpacity(0.05),
-          ],
-        ),
+        color: Colors.white, // Fondo blanco
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: Constants.colorRosa.withOpacity(0.3),
-          width: 1.5,
-        ),
         boxShadow: [
           BoxShadow(
-            color: Constants.colorRosa.withOpacity(0.1),
+            color: Colors.black.withOpacity(0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
         ],
+        border: Border.all(
+          color: Constants.colorFont.withOpacity(0.08),
+          width: 1.5,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -774,13 +738,13 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Constants.colorRosa.withOpacity(0.1),
+                  color: Constants.colorPrimary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Icon(
                   Icons.check_circle_rounded,
-                  color: Constants.colorRosa,
-                  size: 28,
+                  color: Constants.colorPrimary,
+                  size: 32,
                 ),
               ),
               const SizedBox(width: 16),
@@ -789,17 +753,18 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '¡Reunión Creada!',
-                      style: Constants.textStyleFontTitle.copyWith(
+                      '¡Reunión creada!',
+                      style: TextStyle(
+                        color: Constants.colorFont,
                         fontSize: 20,
-                        color: Constants.colorRosa,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
                     Text(
-                      'Tu sesión está lista para comenzar',
-                      style: Constants.textStyleFont.copyWith(
+                      'Tu reunión está lista para iniciar.',
+                      style: TextStyle(
                         color: Constants.colorFont.withOpacity(0.7),
-                        fontSize: 14,
+                        fontSize: 15,
                       ),
                     ),
                   ],
@@ -807,14 +772,12 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
               ),
             ],
           ),
-          
           const SizedBox(height: 20),
-          
           // Room ID
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Constants.colorBackground,
+              color: Colors.grey[100], // Fondo gris claro
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
                 color: Constants.colorFont.withOpacity(0.1),
@@ -826,7 +789,7 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
               children: [
                 Text(
                   'Room ID:',
-                  style: Constants.textStyleFontSmall.copyWith(
+                  style: TextStyle(
                     color: Constants.colorFont.withOpacity(0.6),
                     fontWeight: FontWeight.w500,
                   ),
@@ -834,98 +797,68 @@ class _CreateMeetingPageState extends State<CreateMeetingPage> with TickerProvid
                 const SizedBox(height: 4),
                 SelectableText(
                   _createdRoomId!,
-                  style: Constants.textStyleFontBold.copyWith(
+                  style: TextStyle(
                     fontSize: 16,
                     fontFamily: 'monospace',
-                    color: Constants.colorRosa,
+                    color: Constants.colorPrimary,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ],
             ),
           ),
-          
           const SizedBox(height: 20),
-          
-          // Botones de acción
-          Row(
-            children: [
-              Expanded(
-                child: Container(
-                  height: 50,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Constants.colorRosa, Constants.colorRosaDark],
-                    ),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: ElevatedButton.icon(
-                    onPressed: _opening ? null : _openCreatedMeeting,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    icon: _opening 
-                        ? SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Constants.colorBackground),
-                            ),
-                          )
-                        : Icon(Icons.videocam_rounded, color: Constants.colorBackground),
-                    label: Text(
-                      _opening ? 'Iniciando...' : 'Iniciar Ahora',
-                      style: Constants.textStyleBLANCOSemiBold,
-                    ),
-                  ),
-                ),
+          // Botón para iniciar reunión
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _opening ? null : _openCreatedMeeting,
+              icon: Icon(Icons.play_circle_fill, color: Colors.white),
+              label: Text('Iniciar reunión', style: TextStyle(color: Colors.white)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Constants.colorPrimary,
+                elevation: 2,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                padding: const EdgeInsets.symmetric(vertical: 16),
               ),
-              const SizedBox(width: 12),
-              Container(
-                height: 50,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Constants.colorRosa, width: 1.5),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: IconButton(
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: _createdRoomId!));
-                    _showSnackBar('Room ID copiado al portapapeles', isError: false);
-                  },
-                  icon: Icon(Icons.copy_rounded, color: Constants.colorRosa),
-                  tooltip: 'Copiar Room ID',
-                ),
-              ),
-            ],
+            ),
           ),
-          
+          const SizedBox(height: 12),
+          // Botón para copiar Room ID
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Clipboard.setData(ClipboardData(text: _createdRoomId!));
+                _showSnackBar('Room ID copiado al portapapeles', isError: false);
+              },
+              icon: Icon(Icons.copy_rounded, color: Constants.colorPrimary),
+              label: Text('Copiar Room ID', style: TextStyle(color: Constants.colorPrimary)),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Constants.colorPrimary, width: 1.5),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
-          
           // Instrucciones
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Constants.colorBackground.withOpacity(0.5),
+              color: Colors.grey[100],
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(
               children: [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: Constants.colorRosa,
-                  size: 20,
-                ),
+                Icon(Icons.info_outline_rounded, color: Constants.colorPrimary, size: 20),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Comparte el Room ID con tus estudiantes para que puedan unirse a la reunión.',
-                    style: Constants.textStyleFont.copyWith(
+                    'Puedes compartir el Room ID con tus estudiantes para que se unan a la reunión.',
+                    style: TextStyle(
+                      color: Constants.colorFont.withOpacity(0.7),
                       fontSize: 14,
-                      color: Constants.colorFont.withOpacity(0.8),
                     ),
                   ),
                 ),

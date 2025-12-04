@@ -6,11 +6,14 @@ import 'package:my_app/src/BackEnd/custom/auth_guard.dart'; // ✨ AÑADIR IMPOR
 import 'package:my_app/src/models/usuarios_model.dart';
 import 'package:my_app/src/pages/Estudiantes/buscar_profesores_page.dart';
 import 'package:my_app/src/pages/Editar/editar_perfil_page.dart';
+import 'package:my_app/src/pages/Estudiantes/lista_solicitud_estudiante_page.dart';
+import 'package:my_app/src/pages/Reuniones/meeting_completion_handler.dart';
 import 'package:my_app/src/pages/notificaciones.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
 // Importaciones para las páginas de navegación
 import 'package:my_app/src/pages/Reuniones/reuniones_home_page.dart';
 import 'package:my_app/src/pages/Chat/chat_list_page.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class HomeESPage extends StatefulWidget {
   const HomeESPage({super.key});
@@ -108,6 +111,15 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
     );
   }
 
+  void _navigateToSolicitudes() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ListaSolicitudesEstudiantePage(solicitudes: []),
+      ),
+    );
+  }
+
   void _showComingSoon(String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -138,123 +150,136 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     // ✨ ENVOLVER TODO CON AUTH GUARD
-    return AuthGuard(
-      pageName: 'Home Estudiante',
-      shouldCheck: true, // ✨ ACTIVAR VERIFICACIÓN
-      child: cerrarTecladoAlTocar(
-        child: Scaffold(
-          backgroundColor: Constants.colorBackground,
-          extendBodyBehindAppBar: true,
-          appBar: AppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            actions: [
-              Container(
-                margin: const EdgeInsets.only(right: 16),
+    return MeetingCompletionHandler(
+      child: AuthGuard(
+        pageName: 'Home Estudiante',
+        shouldCheck: true, // ✨ ACTIVAR VERIFICACIÓN
+        child: cerrarTecladoAlTocar(
+          child: Scaffold(
+            backgroundColor: Constants.colorBackground,
+            extendBodyBehindAppBar: true,
+            appBar: AppBar(
+              automaticallyImplyLeading: false,
+              backgroundColor: Colors.transparent,
+              elevation: 0,
+              actions: [
+                FutureBuilder<int>(
+                  future: NotificacionesPage.obtenerCantidadNoLeidas(),
+                  builder: (context, snapshot) {
+                    return Stack(
+                      children: [
+                        IconButton(
+                          icon: Icon(
+                            Icons.notifications_rounded,
+                            color: Constants.colorBackground,
+                            size: 20,
+                          ),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(builder: (_) => const NotificacionesPage()),
+                            );
+                            if (mounted) setState(() {}); // refresca badge al volver
+                          },
+                        ),
+                        if (snapshot.hasData && snapshot.data! > 0)
+                          Positioned(
+                            right: 8,
+                            top: 8,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.red,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                              child: Text(
+                                '${snapshot.data}',
+                                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ],
+              toolbarHeight: 60,
+              flexibleSpace: Container(
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Constants.colorBackground.withOpacity(0.25),
-                      Constants.colorBackground.withOpacity(0.15),
+                      Constants.colorPrimary,
+                      Constants.colorAccent,
+                      Constants.colorPrimaryDark.withOpacity(0.8), // Añadir transición al oscuro
                     ],
+                    stops: const [0.0, 0.6, 1.0],
                   ),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: Constants.colorBackground.withOpacity(0.4),
-                    width: 1,
-                  ),
-                ),
-                child: IconButton(
-                  icon: Icon(
-                    Icons.notifications_rounded,
-                    color: Constants.colorBackground,
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (_) => const NotificacionesPage()),
-                    );
-                  },
                 ),
               ),
-            ],
-            toolbarHeight: 60,
-            flexibleSpace: Container(
+            ),
+
+            body: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
                   colors: [
-                    Constants.colorPrimary,
-                    Constants.colorAccent,
-                    Constants.colorPrimaryDark.withOpacity(0.8), // Añadir transición al oscuro
+                    Constants.colorPrimary, // Color base superior
+                    Constants.colorAccent, // Transición media
+                    Constants.colorPrimaryDark, // Oscuro hacia abajo
+                    Constants.colorPrimaryDark, // Mantener oscuro al final (sin opacidad)
                   ],
-                  stops: const [0.0, 0.6, 1.0],
+                  stops: const [0.0, 0.3, 0.7, 1.0], // Ajustar para que sea más oscuro más rápido
                 ),
               ),
-            ),
-          ),
-
-          body: Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Constants.colorPrimary, // Color base superior
-                  Constants.colorAccent, // Transición media
-                  Constants.colorPrimaryDark, // Oscuro hacia abajo
-                  Constants.colorPrimaryDark, // Mantener oscuro al final (sin opacidad)
-                ],
-                stops: const [0.0, 0.3, 0.7, 1.0], // Ajustar para que sea más oscuro más rápido
-              ),
-            ),
-            // Asegurar que ocupe toda la pantalla
-            width: double.infinity,
-            height: double.infinity,
-            child: SafeArea(
-              child: RefreshIndicator(
-                color: Constants.colorBackground,
-                backgroundColor: Constants.colorAccent,
-                onRefresh: () async {
-                  await RefrescarHelper.actualizarDatos(
-                    context: context,
-                    onUpdate: () {
-                      setState(() {});
-                    },
-                  );
-                },
-                child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(16.0),
-                  child: Container(
-                    // Contenedor adicional para asegurar que el contenido tenga el fondo correcto
-                    constraints: BoxConstraints(
-                      minHeight: MediaQuery.of(context).size.height - 
-                                 MediaQuery.of(context).padding.top - 
-                                 MediaQuery.of(context).padding.bottom - 32,
+              // Asegurar que ocupe toda la pantalla
+              width: double.infinity,
+              height: double.infinity,
+              child: SafeArea(
+                child: RefreshIndicator(
+                  color: Constants.colorBackground,
+                  backgroundColor: Constants.colorAccent,
+                  onRefresh: () async {
+                    await RefrescarHelper.actualizarDatos(
+                      context: context,
+                      onUpdate: () {
+                        setState(() {});
+                      },
+                    );
+                  },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.all(16.0),
+                    child: Container(
+                      // Contenedor adicional para asegurar que el contenido tenga el fondo correcto
+                      constraints: BoxConstraints(
+                        minHeight: MediaQuery.of(context).size.height - 
+                                   MediaQuery.of(context).padding.top - 
+                                   MediaQuery.of(context).padding.bottom - 32,
+                      ),
+                      child: _buildAnimatedContent(),
                     ),
-                    child: _buildAnimatedContent(),
                   ),
                 ),
               ),
             ),
-          ),
 
-          bottomNavigationBar: CustomBottomNavBar(
-            selectedIndex: selectedIndex,
-            isEstudiante: true,
-            onReloadHome: () {
-              RefrescarHelper.actualizarDatos(
-                context: context,
-                onUpdate: () {
-                  setState(() {});
-                },
-              );
-            },
+            bottomNavigationBar: CustomBottomNavBar(
+              selectedIndex: selectedIndex,
+              isEstudiante: true,
+              onReloadHome: () {
+                RefrescarHelper.actualizarDatos(
+                  context: context,
+                  onUpdate: () {
+                    setState(() {});
+                  },
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -527,6 +552,7 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
         'subtitle': 'Encuentra tutores expertos en tu materia',
         'gradient': [Constants.colorPrimaryLight, Constants.colorAccent],
         'bgColor': Constants.colorPrimaryLight,
+        'onTap': _navigateToBuscarProfesores,
       },
       {
         'icon': Icons.group_rounded,
@@ -534,6 +560,7 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
         'subtitle': 'Ver y unirse a sesiones programadas',
         'gradient': [Constants.colorButton, Constants.colorPrimary],
         'bgColor': Constants.colorButton,
+        'onTap': _navigateToReuniones,
       },
       {
         'icon': Icons.chat_rounded,
@@ -541,6 +568,15 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
         'subtitle': 'Comunicación directa con profesores',
         'gradient': [Constants.colorRosa, Constants.colorRosaLight],
         'bgColor': Constants.colorRosa,
+        'onTap': _navigateToChat,
+      },
+      {
+        'icon': Icons.assignment_rounded,
+        'title': 'Solicitudes',
+        'subtitle': 'Gestiona tus solicitudes de tutoría',
+        'gradient': [Constants.colorSecondary, Constants.colorAccent],
+        'bgColor': Constants.colorSecondary,
+        'onTap': _navigateToSolicitudes,
       },
     ];
 
@@ -548,23 +584,6 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
       children: features.asMap().entries.map((entry) {
         final index = entry.key;
         final feature = entry.value;
-        VoidCallback onTap;
-        
-        // Asignar función según el índice
-        switch (index) {
-          case 0:
-            onTap = _navigateToBuscarProfesores;
-            break;
-          case 1:
-            onTap = _navigateToReuniones;
-            break;
-          case 2:
-            onTap = _navigateToChat;
-            break;
-          default:
-            onTap = () => _showComingSoon(feature['title'] as String);
-        }
-        
         return Padding(
           padding: EdgeInsets.only(bottom: index < features.length - 1 ? 16 : 0),
           child: _buildElegantFeatureCard(
@@ -573,7 +592,7 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
             subtitle: feature['subtitle'] as String,
             gradientColors: feature['gradient'] as List<Color>,
             bgColor: feature['bgColor'] as Color,
-            onTap: onTap,
+            onTap: feature['onTap'] as VoidCallback,
             index: index,
           ),
         );
@@ -720,6 +739,25 @@ class _HomeESPageState extends State<HomeESPage> with TickerProviderStateMixin {
         ),
       ),
     );
+  }
+
+  Future<Map<String, dynamic>?> completeMeeting(String roomId) async {
+    final meeting = await Supabase.instance.client
+        .from('meetings')
+        .select('id')
+        .eq('room_id', roomId)
+        .maybeSingle();
+
+    if (meeting != null && meeting['id'] != null) {
+      final result = await Supabase.instance.client
+          .from('meetings')
+          .update({'status': 'completada'})
+          .eq('id', meeting['id'])
+          .select()
+          .maybeSingle();
+      return result;
+    }
+    return null;
   }
 }
 

@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:my_app/src/pages/login/login_page.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:my_app/src/BackEnd/custom/library.dart';
+import 'package:flutter/services.dart';
 
 class AuthGuard extends StatefulWidget {
   final Widget child;
@@ -23,7 +25,10 @@ class AuthGuard extends StatefulWidget {
 class _AuthGuardState extends State<AuthGuard> {
   Timer? _authTimer;
   bool _isChecking = false;
+  bool _isRedirecting = false; // ← NUEVO FLAG
   StreamSubscription<AuthState>? _authSubscription;
+
+  static int _fallasCriticas = 0;
 
   @override
   void initState() {
@@ -112,14 +117,13 @@ class _AuthGuardState extends State<AuthGuard> {
       try {
         final userResponse = await client
             .from('usuarios')
-            .select('id')
+            .select()
             .eq('id', user.id)
-            .timeout(const Duration(seconds: 3)); // ✨ TIMEOUT CORTO
+            .single()
+            .timeout(const Duration(seconds: 10)); // ✨ TIMEOUT CORTO
 
-        // Si la respuesta es una lista, obtener el primer elemento
-        final userData = (userResponse is List && userResponse.isNotEmpty)
-            ? userResponse.first
-            : userResponse;
+        // La respuesta de .single() es un PostgrestMap (Map), no una lista
+        final userData = userResponse;
 
         if (userData == null) {
           _handleAuthFailureImmediate('Usuario no existe en la base de datos');
@@ -166,15 +170,27 @@ class _AuthGuardState extends State<AuthGuard> {
   }
 
   void _handleAuthFailureImmediate(String reason) {
-    print('[AUTH_GUARD] 🚨 FALLA CRÍTICA - CERRANDO APP: $reason');
-    
-    if (!mounted) return;
+    if (_isRedirecting) return; // ← EVITA MÚLTIPLES EJECUCIONES
+    _isRedirecting = true;
 
-    // ✨ LIMPIAR Y REDIRIGIR INMEDIATAMENTE SIN MENSAJES
+    print('[AUTH_GUARD] 🚨 FALLA CRÍTICA - CERRANDO APP: $reason');
+    _fallasCriticas++;
+
+    if (_fallasCriticas >= 5) {
+      // Opcional: cerrar la app completamente
+      Future.delayed(const Duration(milliseconds: 500), () {
+        SystemNavigator.pop(); // Cierra la app en Android/iOS
+      });
+      return;
+    }
+
+    // Limpiar y redirigir al login
     _clearAuthData().then((_) {
       if (mounted) {
-        // ✨ REDIRIGIR INMEDIATAMENTE SIN ESPERAR
-        _redirectToLogin();
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => LoginPage()), // Asegúrate de importar LoginPage
+          (route) => false,
+        );
       }
     });
   }
@@ -255,6 +271,23 @@ class _AuthGuardState extends State<AuthGuard> {
       print('[AUTH_GUARD] ⚠️ Error limpiando datos (continuando): $e');
       // No importa si falla, continuamos con la redirección
     }
+  }
+
+  void _manejarFallaCritica(BuildContext context) {
+    _fallasCriticas++;
+    debugPrint('[AUTH_GUARD] 🚨 FALLA CRÍTICA - CERRANDO APP: Usuario cerró sesión ($_fallasCriticas)');
+
+    if (_fallasCriticas >= 5) {
+      _fallasCriticas = 0; // Reinicia el contador
+      // Aquí puedes reiniciar la app, navegar al login, o cerrar la app
+      // Ejemplo: Navegar al login y limpiar el stack
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      // O usa RestartWidget si tienes un widget de reinicio global
+      // RestartWidget.restartApp(context);
+      return;
+    }
+
+    // ...tu lógica normal de cerrar sesión...
   }
 
   @override

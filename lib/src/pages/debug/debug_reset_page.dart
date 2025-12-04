@@ -63,6 +63,8 @@ class DebugResetPage extends StatelessWidget {
       // 2. Limpiar todas las SharedPreferences
       try {
         final prefs = await SharedPreferences.getInstance();
+        final userId = Supabase.instance.client.auth.currentUser?.id;
+        if (userId != null) { await prefs.remove('onboarding_visto_$userId'); }
         await prefs.clear();
         debugPrint('[RESET] ✅ SharedPreferences limpiadas');
       } catch (e) {

@@ -1,15 +1,14 @@
 import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'package:my_app/src/BackEnd/services/notifications_service.dart';
+import 'package:flutter/foundation.dart';
 
 class SolicitudModel {
   final SupabaseClient _supabase = Supabase.instance.client;
 
-  Future<void> crearSolicitud(SolicitudData solicitud) async {
+  Future<SolicitudData> crearSolicitud(SolicitudData solicitud) async {
     try {
       final map = solicitud.toMap();
-
-      // Columnas reales en la tabla según lo que pegaste:
       final allowedColumns = <String>{
         'id',
         'estudiante_id',
@@ -21,43 +20,83 @@ class SolicitudModel {
         'nombre_estudiante',
       };
 
-      // Filtrar solo las claves que existen en la tabla
       final filtered = <String, dynamic>{};
       for (final entry in map.entries) {
         final key = entry.key;
         final value = entry.value;
-
-        // Si la key no está permitida, saltarla
         if (!allowedColumns.contains(key)) continue;
 
-        // Evitar insertar id vacío (Postgres falla al convertir '' a uuid)
         if (key == 'id') {
           final s = value?.toString() ?? '';
-          if (s.trim().isEmpty) {
-            // saltar la clave 'id' para que la BD asigne el id por defecto
-            continue;
-          }
+          if (s.trim().isEmpty) continue;
         }
-
-        // Evitar insertar estudiante_id/profesor_id vacíos (también UUID)
-        if ((key == 'estudiante_id' || key == 'profesor_id')) {
+        if (key == 'estudiante_id' || key == 'profesor_id') {
           final s = value?.toString() ?? '';
           if (s.trim().isEmpty) {
-            // Si faltan estos ids, mejor no insertarlos y fallar lógicamente en la app antes
-            continue;
+            throw Exception('Faltan IDs requeridos');
           }
         }
-
         filtered[key] = value;
       }
 
-      // Asegurar fecha_solicitud si no viene
+      filtered.putIfAbsent('estado', () => 'pendiente');
       filtered.putIfAbsent('fecha_solicitud', () => DateTime.now().toUtc().toIso8601String());
 
-      // Debug temporal (opcional): muestra qué se intenta insertar
-      // print('DEBUG crearSolicitud filtered payload: $filtered');
+      final inserted = await _supabase
+          .from('solicitudes_tutorias')
+          .insert(filtered)
+          .select()
+          .single();
 
-      await _supabase.from('solicitudes_tutorias').insert([filtered]);
+      // Enriquecer con nombre del estudiante
+      final estudianteData = await _supabase
+          .from('usuarios')
+          .select('nombre, apellido')
+          .eq('id', inserted['estudiante_id'])
+          .single();
+      inserted['estudiante'] = {'usuarios': estudianteData};
+
+      // Notificar al profesor (una sola vez, dirigida)
+      final estudianteNombre = inserted['nombre_estudiante'] ?? 'Estudiante';
+      final profesorId = inserted['profesor_id']?.toString();
+      final estudianteId = inserted['estudiante_id']?.toString();
+      final solicitudIdStr = inserted['id']?.toString();
+
+      // Identificar el usuario actual
+      final currentUserId = _supabase.auth.currentUser?.id;
+
+      // Para el tutor (solo si el usuario actual es el tutor)
+      if (profesorId != null && solicitudIdStr != null && currentUserId == profesorId) {
+        debugPrint('[SOLICITUD] Notificación al tutor:');
+        await NotificationsService.showNotification(
+          title: 'Solicitud recibida',
+          body: 'Has recibido una solicitud de tutoría de $estudianteNombre',
+          userId: profesorId,
+          tipo: 'solicitud_recibida',
+          referenciaId: solicitudIdStr,
+        );
+      }
+
+      // Para el estudiante (solo si el usuario actual es el estudiante)
+      if (estudianteId != null && solicitudIdStr != null && currentUserId == estudianteId) {
+        debugPrint('[SOLICITUD] Notificación al estudiante:');
+        await NotificationsService.showNotification(
+          title: 'Solicitud enviada',
+          body: 'Tu solicitud fue enviada al tutor',
+          userId: estudianteId,
+          tipo: 'solicitud_enviada',
+          referenciaId: solicitudIdStr,
+        );
+      }
+
+      return SolicitudData.fromMap(inserted);
+    } on PostgrestException catch (e) {
+      // Traduce duplicados con nombre de constraint
+      if (e.code == '23505') {
+        final detalle = e.details ?? 'Registro duplicado';
+        throw Exception('Conflicto (duplicado): $detalle');
+      }
+      throw Exception('Error Postgrest: ${e.message}');
     } catch (e) {
       throw Exception('Error al crear solicitud: $e');
     }
@@ -115,12 +154,62 @@ class SolicitudModel {
     }
   }
 
-  Future<void> actualizarEstado(String idSolicitud, String nuevoEstado) async {
+  Future<SolicitudData> actualizarEstado(String idSolicitud, String nuevoEstado) async {
     try {
+      // Actualizar estado + fecha_respuesta
       await _supabase
           .from('solicitudes_tutorias')
-          .update({'estado': nuevoEstado})
+          .update({
+            'estado': nuevoEstado,
+            'fecha_respuesta': DateTime.now().toUtc().toIso8601String(),
+          })
           .eq('id', idSolicitud);
+
+      // Leer fila actualizada (incluir joins si los necesitas)
+      final s = await _supabase
+          .from('solicitudes_tutorias')
+          .select('*, tutor:profesor_id(usuarios(*))')
+          .eq('id', idSolicitud)
+          .maybeSingle();
+
+      if (s == null) {
+        throw Exception('No se encontró la solicitud actualizada');
+      }
+
+      // Adjuntar nombre de estudiante como hace el resto del modelo
+      final estudianteData = await _supabase
+          .from('usuarios')
+          .select('nombre, apellido')
+          .eq('id', s['estudiante_id'])
+          .single();
+      s['estudiante'] = {'usuarios': estudianteData};
+
+      final estudianteNombre = s['nombre_estudiante'] ?? 'Estudiante';
+      String mensaje = '';
+      String tipo = 'solicitud';
+      if (nuevoEstado == 'aceptada') {
+        mensaje = '¡Tu solicitud fue aceptada! Puedes iniciar el chat con el profesor.';
+        tipo = 'chat';
+      } else if (nuevoEstado == 'rechazada') {
+        mensaje = 'Tu solicitud fue rechazada.';
+      }
+
+      // Notificación al estudiante (solo si el usuario actual es el estudiante)
+      final currentUserId = _supabase.auth.currentUser?.id;
+      final estudianteId = s['estudiante_id']?.toString();
+
+      // Notificación al estudiante (solo si el usuario actual es el estudiante)
+      if (mensaje.isNotEmpty && estudianteId != null && currentUserId == estudianteId) {
+        await NotificationsService.showNotification(
+          title: 'Estado de solicitud',
+          body: '$mensaje ($estudianteNombre)',
+          userId: estudianteId,
+          tipo: tipo,
+          referenciaId: idSolicitud,
+        );
+      }
+
+      return SolicitudData.fromMap(s);
     } catch (e) {
       throw Exception('Error al actualizar estado: $e');
     }

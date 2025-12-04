@@ -25,7 +25,7 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
 
   Future<void> _loadMeetingsToRate() async {
     setState(() => _isLoading = true);
-    
+
     try {
       final currentUser = Supabase.instance.client.auth.currentUser;
       if (currentUser == null) {
@@ -34,9 +34,10 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
       }
 
       debugPrint('[CLASIFICAR] 🔍 Cargando reuniones para calificar...');
-      
-      final meetings = await _ratingModel.getRatableCompletedMeetings(currentUser.id);
-      
+
+      final meetings = await TutorRatingModel().getRatableCompletedMeetings(currentUser.id);
+
+      if (!mounted) return;
       setState(() {
         _meetingsToRate = meetings;
         _isLoading = false;
@@ -45,26 +46,32 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
       debugPrint('[CLASIFICAR] ✅ ${meetings.length} reuniones cargadas para calificar');
     } catch (e) {
       debugPrint('[CLASIFICAR] ❌ Error cargando reuniones: $e');
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _navigateToRating(Map<String, dynamic> meeting) async {
+    // Validar tutor_id antes de navegar
+    if (!meeting.containsKey('tutor_id') || meeting['tutor_id'] == null) {
+      debugPrint('[CLASIFICAR] ❌ tutor_id es null para meeting: ${meeting['id']}');
+    }
     final result = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (context) => CalificarTutorPage(
-          meetingId: meeting['id'],
+          meetingId: meeting['id'] ?? '',
           tutorId: meeting['tutor_id'] ?? '',
           tutorName: meeting['tutor_name'] ?? 'Tutor',
           subject: meeting['subject'] ?? 'Tutoría General',
         ),
       ),
     );
-
+    if (!mounted) return;
     // Si se guardó la calificación, recargar la lista
     if (result == true) {
-      _loadMeetingsToRate();
+      await _loadMeetingsToRate();
+      if (!mounted) return;
     }
   }
 
@@ -151,6 +158,7 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _meetingsToRate.length,
+        physics: const AlwaysScrollableScrollPhysics(),
         itemBuilder: (context, index) {
           final meeting = _meetingsToRate[index];
           return _buildMeetingCard(meeting);
@@ -160,10 +168,12 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
   }
 
   Widget _buildMeetingCard(Map<String, dynamic> meeting) {
+    // Validación de scheduled_at
+    if (!meeting.containsKey('scheduled_at') || meeting['scheduled_at'] == null) return SizedBox.shrink();
     final scheduledAt = DateTime.parse(meeting['scheduled_at']).toLocal();
-    final subject = meeting['subject'] ?? 'Tutoría General';
-    final tutorName = meeting['tutor_name'] ?? 'Tutor';
-    
+    final subject = meeting.containsKey('subject') && meeting['subject'] != null ? meeting['subject'] : 'Tutoría General';
+    final tutorName = meeting.containsKey('tutor_name') && meeting['tutor_name'] != null ? meeting['tutor_name'] : 'Tutor';
+
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 2,
@@ -215,9 +225,9 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 12),
-            
+
             // Información de la reunión
             Row(
               children: [
@@ -231,9 +241,9 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 4),
-            
+
             Row(
               children: [
                 Icon(Icons.schedule, size: 16, color: Constants.colorSurface),
@@ -246,16 +256,16 @@ class _ClasificarReunionesPageState extends State<ClasificarReunionesPage> {
                 ),
               ],
             ),
-            
+
             const SizedBox(height: 16),
-            
+
             // Botón de calificar
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
                 onPressed: () => _navigateToRating(meeting),
                 icon: const Icon(Icons.star),
-                label: const Text('Calificar Reunión'),
+                label: const Text('Evaluar Tutor'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Constants.colorAccent,
                   foregroundColor: Constants.colorBackground,

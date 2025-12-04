@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/BackEnd/custom/custom_bottom_nav_bar.dart';
+import 'package:my_app/src/BackEnd/services/notifications_service.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
+import 'package:my_app/src/models/reuniones_model.dart';
 import 'package:my_app/src/pages/Reuniones/crear_reunion_page.dart';
-import 'package:my_app/src/pages/Reuniones/unir_reunion_page.dart';
+import 'package:my_app/src/pages/Reuniones/unir_es_page.dart';
+import 'package:my_app/src/pages/Reuniones/unir_pro_page.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+ // Asegúrate de que la ruta sea correcta
 
 class ReunionesHomePage extends StatefulWidget {
   const ReunionesHomePage({super.key});
@@ -158,7 +164,6 @@ class _ReunionesHomePageState extends State<ReunionesHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ Mostrar UI optimizada durante carga
     if (_isLoading) {
       return Scaffold(
         backgroundColor: Constants.colorPrimaryDark,
@@ -183,6 +188,46 @@ class _ReunionesHomePageState extends State<ReunionesHomePage> {
       );
     }
 
+    // Si es estudiante, solo muestra el widget de agendar
+    if (_isEstudiante == true) {
+      return Scaffold(
+        backgroundColor: Constants.colorPrimaryDark,
+        appBar: AppBar(
+          title: const Text('Reuniones'),
+          backgroundColor: Constants.colorPrimaryDark,
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: Constants.colorBackground),
+          titleTextStyle: TextStyle(
+            color: Constants.colorBackground,
+            fontWeight: FontWeight.bold,
+            fontSize: 22,
+          ),
+        ),
+        body: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                Constants.colorPrimaryDark,
+                Constants.colorPrimary,
+              ],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: _buildStudentJoinMeeting(),
+          ),
+        ),
+        bottomNavigationBar: CustomBottomNavBar(
+          selectedIndex: 0,
+          isEstudiante: _isEstudiante!,
+        ),
+      );
+    }
+
+    // Si es profesor, muestra la lista de reuniones
     return Scaffold(
       backgroundColor: Constants.colorPrimaryDark,
       appBar: AppBar(
@@ -271,6 +316,14 @@ class _ReunionesHomePageState extends State<ReunionesHomePage> {
                     ],
                   ),
                 ),
+                
+                // ✅ Sección adicional para estudiantes
+                if (_isEstudiante!) ...[
+                  const SizedBox(height: 24),
+                  Text('Tus reuniones agendadas', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 8),
+                  _buildStudentMeetingsList(),
+                ],
               ],
             ),
           ),
@@ -346,12 +399,21 @@ class _ReunionesHomePageState extends State<ReunionesHomePage> {
 
   void _navigateToJoinMeeting() {
     debugPrint('[REUNIONES] 🚀 Navegando a unirse a reunión');
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const JoinMeetingPage(),
-      ),
-    );
+    if (_isEstudiante == true) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const UnirESPage(),
+        ),
+      );
+    } else {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const UnirPROPage(),
+        ),
+      );
+    }
   }
 
   // ✅ Diálogo de información optimizado
@@ -389,6 +451,22 @@ class _ReunionesHomePageState extends State<ReunionesHomePage> {
           ),
         ],
       ),
+    );
+  }
+
+  void _enviarNotificacionPrueba() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    await NotificationsService.showNotification(
+      title: '¡Hola!',
+      body: 'Esta es una notificación solo para ti.',
+      userId: userId,
+      tipo: 'prueba',
+      referenciaId: null,
+    );
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Notificación enviada')),
     );
   }
 
@@ -462,5 +540,327 @@ class _ReunionesHomePageState extends State<ReunionesHomePage> {
         ),
       ),
     );
+  }
+
+  Widget _buildStudentJoinMeeting() {
+    final TextEditingController _codeController = TextEditingController();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Card para agendar reunión (más bonita y moderna)
+        Container(
+          margin: const EdgeInsets.only(bottom: 20),
+          decoration: BoxDecoration(
+            color: Constants.colorBackground,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [
+              BoxShadow(
+                color: Constants.colorPrimaryDark.withOpacity(0.13),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+              ),
+            ],
+            border: Border.all(
+              color: Constants.colorPrimary.withOpacity(0.18),
+              width: 1.5,
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Constants.colorAccent.withOpacity(0.13),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.all(12),
+                      child: Icon(Icons.event_available, color: Constants.colorAccent, size: 28),
+                    ),
+                    const SizedBox(width: 14),
+                    Text(
+                      'Agendar reunión',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 19,
+                        color: Constants.colorAccent,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Si tienes un código de reunión, ingrésalo aquí para agendarla en tu perfil.',
+                  style: TextStyle(fontSize: 14, color: Constants.colorFont.withOpacity(0.7)),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _codeController,
+                        decoration: InputDecoration(
+                          hintText: 'Código de reunión',
+                          filled: true,
+                          fillColor: Constants.colorBackground.withOpacity(0.97),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            borderSide: BorderSide(color: Constants.colorPrimary, width: 1.2),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        ),
+                        style: TextStyle(fontSize: 15, color: Constants.colorFont),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.save_alt, size: 18),
+                      label: const Text('Agendar'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Constants.colorAccent,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 2,
+                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      onPressed: () async {
+                        final code = _codeController.text.trim();
+                        if (code.isEmpty) return;
+                        final meeting = await MeetingModel().findByRoom(code);
+                        if (meeting != null) {
+                          final currentUserId = Supabase.instance.client.auth.currentUser?.id;
+                          await Supabase.instance.client.from('student_meetings').insert({
+                            'student_id': currentUserId,
+                            'meeting_id': meeting['id'],
+                          });
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('¡Reunión agendada exitosamente!')),
+                          );
+                          // Notificación para nueva reunión agendada
+                          final fecha = meeting['fecha_hora'] != null
+                              ? DateTime.tryParse(meeting['fecha_hora'])
+                              : (meeting['scheduled_at'] != null
+                                  ? DateTime.tryParse(meeting['scheduled_at'])
+                                  : null);
+
+                          final roomId = meeting['room_id'] ?? '';
+
+                          // Notificación inmediata en BD para que el badge se actualice ya
+                          await NotificationsService.showNotification(
+                            title: 'Reunión agendada',
+                            body: 'Tu reunión ha sido agendada para ${fecha != null ? DateFormat('dd/MM/yyyy • HH:mm').format(fecha.toLocal()) : 'fecha desconocida'}.',
+                            userId: currentUserId!,
+                            tipo: 'reunion_agendada',
+                            referenciaId: roomId.isNotEmpty ? roomId : meeting['id']?.toString(),
+                          );
+                          setState(() {});
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Código inválido o reunión no encontrada')),
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        // Card para unirse a reunión (mantén el estilo moderno de opción)
+        _buildOptionCard(
+          icon: Icons.video_call,
+          title: 'Unirse a reunión',
+          subtitle: 'Accede directamente a la videollamada si ya tienes agendada la reunión.',
+          color: Constants.colorPrimary,
+          onTap: () {
+            _navigateToJoinMeeting();
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerReunionesAgendadas() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return [];
+    final relaciones = await Supabase.instance.client
+        .from('student_meetings')
+        .select('meeting_id')
+        .eq('student_id', userId);
+
+    if (relaciones == null || relaciones.isEmpty) return [];
+
+    final ids = relaciones.map((r) => r['meeting_id']).toList();
+    if (ids.isEmpty) return [];
+
+    final reuniones = await Supabase.instance.client
+        .from('meetings')
+        .select()
+        .inFilter('id', ids);
+
+    return List<Map<String, dynamic>>.from(reuniones);
+  }
+
+  Widget _buildStudentMeetingsList() {
+    return FutureBuilder<List<Map<String, dynamic>>>(
+      future: obtenerReunionesAgendadas(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Constants.colorAccent),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return Center(
+            child: Text(
+              'Error al cargar reuniones',
+              style: TextStyle(color: Constants.colorError),
+            ),
+          );
+        }
+
+        final reuniones = snapshot.data;
+        if (reuniones == null || reuniones.isEmpty) {
+          return Center(
+            child: Text(
+              'No tienes reuniones agendadas',
+              style: TextStyle(color: Constants.colorFont.withOpacity(0.7)),
+            ),
+          );
+        }
+
+        return ListView.separated(
+          shrinkWrap: true,
+          physics: NeverScrollableScrollPhysics(),
+          itemCount: reuniones.length,
+          separatorBuilder: (context, index) => const SizedBox(height: 12),
+          itemBuilder: (context, index) {
+            final reunion = reuniones[index];
+            // <-- cambio: usar scheduled_at con fallback y parse seguro
+            final fechaIso = reunion['scheduled_at'] ?? reunion['fecha_hora'] ?? '';
+            final fechaHora = DateTime.tryParse(fechaIso)?.toLocal();
+            final fechaFormateada = fechaHora != null
+                ? '${fechaHora.day}/${fechaHora.month}/${fechaHora.year}'
+                : 'Fecha desconocida';
+            final horaFormateada = fechaHora != null
+                ? '${fechaHora.hour.toString().padLeft(2,'0')}:${fechaHora.minute.toString().padLeft(2,'0')}'
+                : '--:--';
+
+            return Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Constants.colorPrimaryDark.withOpacity(0.08),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+                border: Border.all(
+                  color: Constants.colorPrimaryDark,
+                  width: 1.5,
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    reunion['titulo'] ?? 'Reunión sin título',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: Constants.colorFont,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Fecha: $fechaFormateada',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Constants.colorFont.withOpacity(0.8),
+                    ),
+                  ),
+                  Text(
+                    'Hora: $horaFormateada',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Constants.colorFont.withOpacity(0.8),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          // Acción para unirse a la reunión
+                          _joinMeeting(reunion['id']);
+                        },
+                        icon: Icon(Icons.video_call),
+                        label: Text('Unirse'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Constants.colorPrimary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: () {
+                          // Acción para cancelar la reunión
+                          _cancelMeeting(reunion['id']);
+                        },
+                        child: Text(
+                          'Cancelar',
+                          style: TextStyle(
+                            color: Constants.colorError,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _joinMeeting(String meetingId) {
+    // Lógica para unirse a la reunión
+    debugPrint('Unirse a la reunión con ID: $meetingId');
+    // Aquí puedes navegar a la página de reunión o abrir el enlace de la videollamada
+  }
+
+  void _cancelMeeting(String meetingId) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) return;
+
+    // Eliminar la relación de la reunión agendada
+    await Supabase.instance.client
+        .from('student_meetings')
+        .delete()
+        .eq('student_id', userId)
+        .eq('meeting_id', meetingId);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Reunión cancelada')),
+    );
+
+    setState(() {}); // Refrescar la lista de reuniones agendadas
   }
 }

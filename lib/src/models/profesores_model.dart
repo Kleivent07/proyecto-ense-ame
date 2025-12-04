@@ -1,8 +1,10 @@
 // ignore_for_file: unnecessary_null_comparison, unnecessary_type_check
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' as supabase_flutter;
+import 'package:my_app/src/BackEnd/custom/custom_bottom_nav_bar.dart' as nav;
+import 'package:my_app/src/models/profesores_model.dart' as profesor_model;
 
 class ProfesorService {
-  final supabase = Supabase.instance.client;
+  final supabase = supabase_flutter.Supabase.instance.client;
 
   Future<bool> crearProfesorInicial(String userId) async {
     try {

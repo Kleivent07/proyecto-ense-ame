@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:my_app/src/BackEnd/custom/custom_bottom_nav_bar.dart';
-import 'package:my_app/src/BackEnd/custom/no_teclado.dart';
 import 'package:my_app/src/BackEnd/custom/refrescar.dart';
-import 'package:my_app/src/BackEnd/custom/auth_guard.dart'; // ✨ AÑADIR IMPORT
 import 'package:my_app/src/models/usuarios_model.dart';
+import 'package:my_app/src/pages/Chat/chat_list_page.dart';
 import 'package:my_app/src/pages/Editar/editar_perfil_page.dart';
-import 'package:my_app/src/pages/notificaciones.dart';
+import 'package:my_app/src/pages/Reuniones/reuniones_home_page.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
+import 'package:my_app/src/pages/Documentos/documentos_whatsapp_page.dart';
+import 'package:my_app/src/BackEnd/custom/auth_guard.dart';
+import 'package:my_app/src/pages/notificaciones.dart';
 
 class HomePROPage extends StatefulWidget {
   const HomePROPage({super.key});
@@ -89,44 +91,12 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
       pageName: 'Home Profesor',
       shouldCheck: true, // ✨ ACTIVAR VERIFICACIÓN
       child: Scaffold(
-        backgroundColor: Constants.colorBackground,
+        backgroundColor: Colors.transparent,
         extendBodyBehindAppBar: true,
         appBar: AppBar(
+          automaticallyImplyLeading: false,
           backgroundColor: Colors.transparent,
           elevation: 0,
-          actions: [
-            Container(
-              margin: const EdgeInsets.only(right: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Constants.colorBackground.withOpacity(0.2),
-                    Constants.colorBackground.withOpacity(0.1),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: Constants.colorBackground.withOpacity(0.3),
-                  width: 1,
-                ),
-              ),
-              child: IconButton(
-                icon: Icon(
-                  Icons.notifications_rounded,
-                  color: Constants.colorBackground,
-                  size: 20,
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const NotificacionesPage()),
-                  );
-                },
-              ),
-            ),
-          ],
           toolbarHeight: 60,
           flexibleSpace: Container(
             decoration: BoxDecoration(
@@ -140,6 +110,52 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
               ),
             ),
           ),
+          actions: [
+            FutureBuilder<int>(
+              future: NotificacionesPage.obtenerCantidadNoLeidas(),
+              builder: (context, snapshot) {
+                return Stack(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.notifications),
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => const NotificacionesPage()),
+                        );
+                        setState(() {}); // Refresca el badge al volver
+                      },
+                    ),
+                    if (snapshot.hasData && snapshot.data! > 0) 
+                      Positioned(
+                        right: 8,
+                        top: 8,
+                        child: Container(
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            color: Colors.red,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          constraints: const BoxConstraints(
+                            minWidth: 18,
+                            minHeight: 18,
+                          ),
+                          child: Text(
+                            '${snapshot.data}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
         ),
 
         body: Container(
@@ -149,10 +165,10 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
               end: Alignment.bottomCenter,
               colors: [
                 Constants.colorPrimaryDark,
-                Constants.colorButton,
-                Constants.colorOnPrimary.withOpacity(0.1),
+                Constants.colorButton.withValues(alpha: 0.85),
+                Constants.colorOnPrimary.withValues(alpha: 0.15),
               ],
-              stops: const [0.0, 0.7, 1.0],
+              stops: const [0.0, 0.6, 1.0],
             ),
           ),
           child: SafeArea(
@@ -162,14 +178,12 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
               onRefresh: () async {
                 await RefrescarHelper.actualizarDatos(
                   context: context,
-                  onUpdate: () {
-                    setState(() {});
-                  },
+                  onUpdate: () => setState(() {}),
                 );
               },
               child: SingleChildScrollView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                 child: _buildAnimatedContent(),
               ),
             ),
@@ -182,9 +196,7 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
           onReloadHome: () {
             RefrescarHelper.actualizarDatos(
               context: context,
-              onUpdate: () {
-                setState(() {});
-              },
+              onUpdate: () => setState(() {}),
             );
           },
         ),
@@ -235,15 +247,10 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Constants.colorBackground,
-            Constants.colorBackground.withOpacity(0.98),
-          ],
-        ),
+        // Card blanca como las demás
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.black12),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -254,59 +261,49 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
       ),
       child: Row(
         children: [
+          // Icono con fondo gris suave
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Constants.colorButton.withOpacity(0.1),
-                  Constants.colorOnPrimary.withOpacity(0.05),
-                ],
-              ),
+              color: Colors.black12,
               borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(
-              Icons.school_rounded,
-              color: Constants.colorButton,
-              size: 24,
-            ),
+            child: Icon(Icons.school_rounded, color: Constants.colorButton, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Título negro
                 Text(
                   'Bienvenido, Profesor 👋',
                   style: Constants.textStyleFontBold.copyWith(
                     fontSize: 16,
                     fontWeight: FontWeight.w700,
+                    color: Colors.black87,
                   ),
                 ),
                 const SizedBox(height: 2),
+                // Subtítulo gris
                 Text(
                   'Gestiona tu experiencia educativa',
                   style: Constants.textStyleFontSmall.copyWith(
-                    color: Constants.colorFont.withOpacity(0.7),
+                    color: Colors.black54,
                     fontSize: 12,
                   ),
                 ),
               ],
             ),
           ),
+          // Badge con fondo gris suave
           Container(
             padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: Constants.colorButton.withOpacity(0.1),
+              color: Colors.black12,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(
-              Icons.verified_rounded,
-              color: Constants.colorButton,
-              size: 18,
-            ),
+            child: Icon(Icons.verified_rounded, color: Constants.colorButton, size: 18),
           ),
         ],
       ),
@@ -322,18 +319,18 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Constants.colorRosa.withOpacity(0.1),
-            Constants.colorRosaLight.withOpacity(0.05),
+            Constants.colorRosa.withValues(alpha: 0.10),
+            Constants.colorRosaLight.withValues(alpha: 0.05),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Constants.colorRosa.withOpacity(0.3),
+          color: Constants.colorRosa.withValues(alpha: 0.30),
           width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: Constants.colorRosa.withOpacity(0.1),
+            color: Constants.colorRosa.withValues(alpha: 0.10),
             blurRadius: 12,
             offset: const Offset(0, 6),
           ),
@@ -352,7 +349,7 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
                 ),
                 child: Icon(
                   Icons.person_add_rounded,
-                  color: Constants.colorRosa,
+                  color: Colors.white,
                   size: 20,
                 ),
               ),
@@ -364,14 +361,14 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
                     Text(
                       'Perfil Incompleto',
                       style: Constants.textStyleFontBold.copyWith(
-                        color: Constants.colorRosa,
+                        color: Colors.white,
                         fontSize: 14,
                       ),
                     ),
                     Text(
                       'Completa tu perfil para una mejor experiencia',
                       style: Constants.textStyleFontSmall.copyWith(
-                        color: Constants.colorFont.withOpacity(0.7),
+                        color: Colors.white.withOpacity(0.7),
                         fontSize: 11,
                       ),
                     ),
@@ -397,7 +394,7 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Constants.colorRosa.withOpacity(0.3),
+                    color: Constants.colorRosa.withValues(alpha: 0.30),
                     blurRadius: 6,
                     offset: const Offset(0, 3),
                   ),
@@ -444,28 +441,35 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
         'subtitle': 'Crear y gestionar reuniones con estudiantes. Programa sesiones de tutoría individuales o grupales.',
         'color': Constants.colorButton,
         'gradient': [Constants.colorButton, Constants.colorOnPrimary],
-      },
-      {
-        'icon': Icons.description_rounded,
-        'title': 'Documentos',
-        'subtitle': 'Administrar recursos y material educativo. Comparte archivos, presentaciones y guías de estudio.',
-        'color': Constants.colorAccent,
-        'gradient': [Constants.colorAccent, Constants.colorPrimary],
+        // Dirige a la página de reuniones
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const ReunionesHomePage()),
+        ),
       },
       {
         'icon': Icons.people_rounded,
         'title': 'Estudiantes',
-        'subtitle': 'Gestionar estudiantes asignados',
+        'subtitle': 'Chatea con tus estudiantes asignados',
         'color': Constants.colorRosa,
         'gradient': [Constants.colorRosa, Constants.colorRosaLight],
-        'onTap': () => _showComingSoon('Gestión de Estudiantes'), // Cambiar esta línea
+        // Dirige a la lista de chats
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const ChatListPage()),
+        ),
       },
       {
-        'icon': Icons.settings_rounded,
-        'title': 'Configuración',
-        'subtitle': 'Personalizar preferencias, horarios disponibles y configuración de la cuenta.',
-        'color': Constants.colorOnPrimary,
-        'gradient': [Constants.colorOnPrimary, Constants.colorSurface],
+        'icon': Icons.description_rounded,
+        'title': 'Documentos',
+        'subtitle': 'Ver documentos compartidos con estudiantes. Archivos enviados en chats organizados por conversación.',
+        'color': Constants.colorAccent,
+        'gradient': [Constants.colorAccent, Constants.colorPrimary],
+        // Dirige a la página de documentos
+        'onTap': () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => const DocumentosWhatsappPage()),
+        ),
       },
     ];
 
@@ -480,12 +484,7 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
             title: feature['title'] as String,
             subtitle: feature['subtitle'] as String,
             gradientColors: feature['gradient'] as List<Color>,
-            onTap: () {
-              // Ejecutar la función onTap si está definida, de lo contrario, no hacer nada
-              if (feature['onTap'] != null) {
-                (feature['onTap'] as VoidCallback).call();
-              }
-            },
+            onTap: feature['onTap'] as VoidCallback,
             index: index,
           ),
         );
@@ -505,21 +504,12 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
       duration: Duration(milliseconds: 300 + (index * 100)),
       child: Container(
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Constants.colorBackground,
-              Constants.colorBackground.withOpacity(0.98),
-            ],
-          ),
+          // Cards blancas
+          color: Colors.white,
           borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.black12),
           boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 15,
-              offset: const Offset(0, 6),
-            ),
+            BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 15, offset: const Offset(0, 6)),
           ],
         ),
         child: Material(
@@ -531,50 +521,35 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
               padding: const EdgeInsets.all(20),
               child: Row(
                 children: [
-                  // Icono con gradiente
+                  // Fondo suave para el icono
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          gradientColors[0].withOpacity(0.15),
-                          gradientColors[1].withOpacity(0.08),
-                        ],
-                      ),
+                      color: Colors.black12,
                       borderRadius: BorderRadius.circular(16),
                     ),
-                    child: Icon(
-                      icon,
-                      color: gradientColors[0],
-                      size: 28,
-                    ),
+                    child: Icon(icon, color: gradientColors[0], size: 28),
                   ),
-                  
                   const SizedBox(width: 16),
-                  
-                  // Contenido
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Título
+                        // Texto negro (título)
                         Text(
                           title,
                           style: Constants.textStyleFontBold.copyWith(
                             fontSize: 17,
                             fontWeight: FontWeight.w700,
+                            color: Colors.black87,
                           ),
                         ),
-                        
                         const SizedBox(height: 6),
-                        
-                        // Subtítulo
+                        // Texto negro/gris (subtítulo)
                         Text(
                           subtitle,
                           style: Constants.textStyleFontSmall.copyWith(
-                            color: Constants.colorFont.withOpacity(0.7),
+                            color: Colors.black54,
                             fontSize: 13,
                             height: 1.4,
                           ),
@@ -584,28 +559,14 @@ class _HomePROPageState extends State<HomePROPage> with TickerProviderStateMixin
                       ],
                     ),
                   ),
-                  
                   const SizedBox(width: 12),
-                  
-                  // Flecha indicadora
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          gradientColors[0].withOpacity(0.15),
-                          gradientColors[1].withOpacity(0.08),
-                        ],
-                      ),
+                      color: Colors.black12,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(
-                      Icons.arrow_forward_rounded,
-                      color: gradientColors[0],
-                      size: 18,
-                    ),
+                    child: Icon(Icons.arrow_forward_rounded, color: gradientColors[0], size: 18),
                   ),
                 ],
               ),

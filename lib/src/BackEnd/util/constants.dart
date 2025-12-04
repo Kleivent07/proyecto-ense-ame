@@ -5,7 +5,7 @@ import 'package:my_app/src/BackEnd/custom/library.dart';
 
 class Constants {
 static const bucketAvatar = 'imagenes_usuarios';
-static const bucketChatFiles = 'chat_files'; // ✨ NUEVO BUCKET PARA ARCHIVOS DEL CHAT
+static const bucketChatFiles = 'chat_files_optimized'; // ✨ BUCKET OPTIMIZADO PARA CHAT
 //colors
 static Color colorAccent = HexColor.fromHex("#991f34");
 static Color colorPrimary = HexColor.fromHex("#b60927");
@@ -75,4 +75,28 @@ static Color colorFondo2 = HexColor.fromHex("#dedede");
   static TextStyle textStylePrimaryBoldSmall = GoogleFonts.sora(color: colorPrimary, fontSize: fontSizeSmall, fontWeight: FontWeight.w600);
   static TextStyle textStyleAccentBoldSmall = GoogleFonts.sora(color: colorAccent, fontSize: fontSizeSmall, fontWeight: FontWeight.w600);
   static TextStyle textStyleFontBoldSmall = GoogleFonts.sora(color: colorFont, fontSize: fontSizeSmall, fontWeight: FontWeight.w600);
+
+  // ✨ CONFIGURACIÓN DE SUBIDA
+  static const maxFileSize = 50 * 1024 * 1024; // 50MB máximo
+  static const maxImageSize = 10 * 1024 * 1024; // 10MB para imágenes
+  static const imageQuality = 85; // Calidad de compresión
+  static const maxImageDimension = 1920; // Máximo ancho/alto
+  
+  // ✨ TIPOS MIME OPTIMIZADOS
+  static Map<String, String> getOptimizedMimeTypes() {
+    return {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'txt': 'text/plain',
+      'mp4': 'video/mp4',
+      'mov': 'video/quicktime',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+    };
+  }
 }

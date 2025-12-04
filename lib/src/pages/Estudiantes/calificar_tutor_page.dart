@@ -80,14 +80,16 @@ class _CalificarTutorPageState extends State<CalificarTutorPage> with TickerProv
       studentId: currentUser.id,
     );
 
+    if (!mounted) return;
+
     if (existingRating != null) {
       setState(() {
         _hasExistingRating = true;
-        _selectedRating = existingRating['rating'];
+        _selectedRating = existingRating['rating'] ?? 0;
         _commentsController.text = existingRating['comments'] ?? '';
         _existingRatingId = existingRating['rating_id']?.toString() ?? existingRating['id']?.toString();
       });
-      
+
       debugPrint('[CALIFICAR] ✅ Calificación existente encontrada: Rating=${existingRating['rating']}, ID=$_existingRatingId');
     } else {
       debugPrint('[CALIFICAR] 📝 No hay calificación existente, creando nueva');
