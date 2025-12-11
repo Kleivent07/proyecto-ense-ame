@@ -1,3 +1,3 @@
 // NO subas este archivo a un repo público. Usa .gitignore para excluirlo.
-const int zegoAppID = 55628289; // reemplaza por tu App ID (numérico)
-const String zegoAppSign = 'b8a44850100617c3c5b851dfc3302d108cc16252a68dd883f70d0bccea9cedd7';
+const int zegoAppID = 1323781715; // reemplaza por tu App ID (numérico)
+const String zegoAppSign = '27881362c69418aaf9079914fb1a138a027b3665350355ee77685095379648e7';

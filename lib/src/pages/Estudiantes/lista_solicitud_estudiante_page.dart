@@ -3,6 +3,7 @@ import 'package:my_app/src/BackEnd/custom/solicitud_data.dart';
 import 'package:my_app/src/models/solicitud_model.dart';
 import 'package:my_app/src/BackEnd/util/constants.dart';
 import 'package:intl/intl.dart';
+import 'package:my_app/src/pages/Estudiantes/lista_solicitud_estudiante_page.dart';
 
 
 class ListaSolicitudesEstudiantePage extends StatefulWidget {
@@ -40,6 +41,13 @@ class _ListaSolicitudesEstudiantePageState extends State<ListaSolicitudesEstudia
     }
   }
 
+  void _navigateToSolicitudes() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ListaSolicitudesEstudiantePage(solicitudes: [])),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -59,6 +67,9 @@ class _ListaSolicitudesEstudiantePageState extends State<ListaSolicitudesEstudia
                     ? solicitud.nombreTutor
                     : solicitud.profesorId;
                 final fecha = DateFormat('dd/MM/yyyy HH:mm').format(solicitud.fechaSolicitud);
+                final estadoRaw = solicitud.estado?.toString() ?? '';
+                String capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+                final estadoVista = estadoRaw == 'enviada' ? 'Enviada' : capitalize(estadoRaw);
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -67,7 +78,7 @@ class _ListaSolicitudesEstudiantePageState extends State<ListaSolicitudesEstudia
                       'Tutoría con $displayName',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text('Estado: ${solicitud.estado}\nFecha: $fecha'),
+                    subtitle: Text('Estado: $estadoVista\nFecha: $fecha'),
                     isThreeLine: true,
                     trailing: IconButton(
                       icon: const Icon(Icons.delete, color: Colors.red),

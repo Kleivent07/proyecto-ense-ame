@@ -16,6 +16,7 @@ class ListaSolicitudesProfesorPage extends StatefulWidget {
 class _ListaSolicitudesProfesorPageState extends State<ListaSolicitudesProfesorPage> {
   late List<SolicitudData> solicitudes;
   final solicitudModel = SolicitudModel();
+  bool updating = false;
 
   @override
   void initState() {
@@ -24,11 +25,13 @@ class _ListaSolicitudesProfesorPageState extends State<ListaSolicitudesProfesorP
   }
 
   Future<void> actualizarSolicitudEstado(SolicitudData solicitud, String nuevoEstado) async {
+    if (updating) return;
+    setState(() => updating = true);
     try {
-      await solicitudModel.actualizarEstado(solicitud.id, nuevoEstado);
+      final actualizada = await solicitudModel.actualizarEstado(solicitud.id, nuevoEstado);
       setState(() {
         final index = solicitudes.indexOf(solicitud);
-        solicitudes[index] = solicitud.copyWith(estado: nuevoEstado);
+        if (index != -1) solicitudes[index] = actualizada;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Solicitud $nuevoEstado correctamente')),
@@ -37,7 +40,17 @@ class _ListaSolicitudesProfesorPageState extends State<ListaSolicitudesProfesorP
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error al actualizar solicitud: $e')),
       );
+    } finally {
+      if (mounted) setState(() => updating = false);
     }
+  }
+
+  Future<void> obtenerSolicitudes() async {
+    final profesorId = /* obtén el id del usuario actual */'current_profesor_id';
+    final nuevas = await SolicitudModel().obtenerSolicitudesPorProfesor(profesorId);
+    setState(() {
+      solicitudes = nuevas;
+    });
   }
 
   @override
@@ -57,6 +70,9 @@ class _ListaSolicitudesProfesorPageState extends State<ListaSolicitudesProfesorP
                 final solicitud = solicitudes[index];
                 final estudiante = solicitud.nombreEstudiante;
                 final fecha = DateFormat('dd/MM/yyyy HH:mm').format(solicitud.fechaSolicitud);
+                final estadoRaw = solicitud.estado?.toString() ?? '';
+                String capitalize(String s) => s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
+                final estadoVista = estadoRaw == 'enviada' ? 'Recibida' : capitalize(estadoRaw);
 
                 return Card(
                   margin: const EdgeInsets.only(bottom: 12),
@@ -65,14 +81,14 @@ class _ListaSolicitudesProfesorPageState extends State<ListaSolicitudesProfesorP
                       'Solicitud de $estudiante',
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    subtitle: Text('Estado: ${solicitud.estado}\nFecha: $fecha'),
+                    subtitle: Text('Estado: $estadoVista\nFecha: $fecha'),
                     isThreeLine: true,
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         IconButton(
                           icon: const Icon(Icons.check, color: Colors.green),
-                          onPressed: solicitud.estado != 'aceptada'
+                          onPressed: (!updating && solicitud.estado != 'aceptada')
                               ? () => actualizarSolicitudEstado(solicitud, 'aceptada')
                               : null,
                         ),
