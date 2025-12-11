@@ -630,35 +630,42 @@ class _ReunionesHomePageState extends State<ReunionesHomePage> {
                       onPressed: () async {
                         final code = _codeController.text.trim();
                         if (code.isEmpty) return;
+
                         final meeting = await MeetingModel().findByRoom(code);
                         if (meeting != null) {
                           final currentUserId = Supabase.instance.client.auth.currentUser?.id;
-                          await Supabase.instance.client.from('student_meetings').insert({
-                            'student_id': currentUserId,
-                            'meeting_id': meeting['id'],
-                          });
+                          try {
+                            await Supabase.instance.client.from('student_meetings').insert({
+                              'student_id': currentUserId,
+                              'meeting_id': meeting['id'],
+                            });
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('¡Reunión agendada exitosamente!')),
-                          );
-                          // Notificación para nueva reunión agendada
-                          final fecha = meeting['fecha_hora'] != null
-                              ? DateTime.tryParse(meeting['fecha_hora'])
-                              : (meeting['scheduled_at'] != null
-                                  ? DateTime.tryParse(meeting['scheduled_at'])
-                                  : null);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('¡Reunión agendada exitosamente!')),
+                            );
+                            // Notificación para nueva reunión agendada
+                            final fecha = meeting['fecha_hora'] != null
+                                ? DateTime.tryParse(meeting['fecha_hora'])
+                                : (meeting['scheduled_at'] != null
+                                    ? DateTime.tryParse(meeting['scheduled_at'])
+                                    : null);
 
-                          final roomId = meeting['room_id'] ?? '';
+                            final roomId = meeting['room_id'] ?? '';
 
-                          // Notificación inmediata en BD para que el badge se actualice ya
-                          await NotificationsService.showNotification(
-                            title: 'Reunión agendada',
-                            body: 'Tu reunión ha sido agendada para ${fecha != null ? DateFormat('dd/MM/yyyy • HH:mm').format(fecha.toLocal()) : 'fecha desconocida'}.',
-                            userId: currentUserId!,
-                            tipo: 'reunion_agendada',
-                            referenciaId: roomId.isNotEmpty ? roomId : meeting['id']?.toString(),
-                          );
-                          setState(() {});
+                            // Notificación inmediata en BD para que el badge se actualice ya
+                            await NotificationsService.showNotification(
+                              title: 'Reunión agendada',
+                              body: 'Tu reunión ha sido agendada para ${fecha != null ? DateFormat('dd/MM/yyyy • HH:mm').format(fecha.toLocal()) : 'fecha desconocida'}.',
+                              userId: currentUserId!,
+                              tipo: 'reunion_agendada',
+                              referenciaId: roomId.isNotEmpty ? roomId : meeting['id']?.toString(),
+                            );
+                            setState(() {});
+                          } catch (e) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('No tienes autorización para agendar esta reunión. (ID inválida o sin permisos)')),
+                            );
+                          }
                         } else {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Código inválido o reunión no encontrada')),

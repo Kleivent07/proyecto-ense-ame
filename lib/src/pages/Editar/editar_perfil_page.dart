@@ -98,7 +98,12 @@ class _EditarPerfilPageState extends State<EditarPerfilPage> {
 
     // Inicializar días seleccionados si ya hay horarios guardados
     if (esProfesor && perfil['horario'] != null && perfil['horario'].toString().isNotEmpty) {
-      diasSeleccionados = perfil['horario'].toString().split(',').map((e) => e.trim()).toList();
+      diasSeleccionados = perfil['horario']
+          .toString()
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty && e != 'Por definir')
+          .toList();
     }
   }
 
@@ -212,12 +217,19 @@ class _EditarPerfilPageState extends State<EditarPerfilPage> {
 
       // Actualizar tabla específica según tipo
       if (esProfesor) {
+        final especialidad = especialidadesSeleccionadas.where((e) => e.isNotEmpty).join(', ');
+        final carreraProfesion = carreraProfesionController.text.trim();
+        final experiencia = experienciaController.text.trim();
+        final horario = diasSeleccionados.isNotEmpty
+            ? diasSeleccionados.join(', ')
+            : 'Por definir';
+
         await ProfesorService().actualizarProfesor(
           userId: userId,
-          especialidad: especialidadesSeleccionadas.join(', '),
-          carreraProfesion: carreraProfesionController.text,
-          experiencia: experienciaController.text,
-          horario: horarioController.text,
+          especialidad: especialidad.isEmpty ? 'Sin definir' : especialidad,
+          carreraProfesion: carreraProfesion.isEmpty ? 'Ninguna' : carreraProfesion,
+          experiencia: experiencia.isEmpty ? 'Sin definir' : experiencia,
+          horario: horario,
         );
       } else {
         await EstudianteService().actualizarEstudiante(

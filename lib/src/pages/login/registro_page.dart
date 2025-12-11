@@ -108,83 +108,116 @@ class _RegistroPageState extends State<RegistroPage> {
     }
 
     try {
-      final inicio = DateTime.now();
-
-      final claseFormateada =
-          _tipoUsuario[0].toUpperCase() +
-          _tipoUsuario.substring(1).toLowerCase();
-      // Llamada al servicio
-      final result = await usuarioService.registrarUsuario(
+      // 1. Registro en Auth
+      final response = await Supabase.instance.client.auth.signUp(
         email: _correoController.text.trim().toLowerCase(),
         password: _contrasenaController.text.trim(),
-        nombre: _usuarioController.text.trim(),
-        apellido: _apellidoController.text.trim(),
-        clase: claseFormateada,
-        fechaNacimiento: _fechaNacimiento!,
       );
-      if (claseFormateada != 'Estudiante' && claseFormateada != 'Tutor') {
-        final fin = DateTime.now();
-        final duracion = fin.difference(inicio).inMilliseconds;
-        print('⏱️ Tiempo de respuesta registro: $duracion ms');
-        _snack('Tipo de usuario inválido');
+
+      final userId = response.user?.id;
+      if (userId == null) {
+        _snack('No se pudo crear el usuario. Intenta de nuevo.');
         return;
       }
 
-      if (result['ok'] == true) {
-        _snack(result['message'] ?? 'Registro exitoso');
-        try {
-          await usuarioService.login(
-            _correoController.text.trim().toLowerCase(),
-            _contrasenaController.text.trim(),
-          );
-          final session = Supabase.instance.client.auth.currentSession;
-          final token = session?.accessToken;
-          final userId = session?.user?.id;
+      // 2. Insertar en la tabla usuarios con el id correcto
+      final claseFormateada = _tipoUsuario[0].toUpperCase() + _tipoUsuario.substring(1).toLowerCase();
+      await Supabase.instance.client.from('usuarios').insert({
+        'id': userId,
+        'nombre': _usuarioController.text.trim(),
+        'apellido': _apellidoController.text.trim(),
+        'email': _correoController.text.trim().toLowerCase(),
+        'fecha_nacimiento': _fechaNacimiento!.toIso8601String(),
+        'clase': claseFormateada,
+      });
 
-          final fin = DateTime.now();
-          final duracion = fin.difference(inicio).inMilliseconds;
-          print('⏱️ Tiempo de respuesta registro: $duracion ms');
-
-          if (token != null && userId != null) {
-            navigate(context, CustomPages.loginPage);
-            return;
-          } else {
-            print('No se obtuvo session/token tras login automático.');
-            navigate(context, CustomPages.loginPage);
-            return;
-          }
-        } catch (e) {
-          final fin = DateTime.now();
-          final duracion = fin.difference(inicio).inMilliseconds;
-          print('⏱️ Tiempo de respuesta registro: $duracion ms');
-          print('Login automático falló (no crítico): $e');
-          navigate(context, CustomPages.loginPage);
-          return;
-        }
-      } else {
-        final fin = DateTime.now();
-        final duracion = fin.difference(inicio).inMilliseconds;
-        print('⏱️ Tiempo de respuesta registro: $duracion ms');
-        // Traducimos posibles mensajes de error de Supabase
-        String mensaje = result['message'] ?? 'Error al registrar usuario';
-        if (mensaje.contains('User already registered')) {
-          mensaje = 'El usuario ya está registrado';
-        } else if (mensaje.contains('Invalid email')) {
-          mensaje = 'El correo electrónico no es válido';
-        } else if (mensaje.contains('Weak password')) {
-          mensaje = 'La contraseña es demasiado débil';
-        }
-        _snack(mensaje);
+      // ...después de insertar en 'usuarios'...
+      if (claseFormateada == 'Estudiante') {
+        await Supabase.instance.client.from('estudiantes').insert({
+          'id': userId, // Debe ser el mismo id que en usuarios
+          'carrera': 'Sin definir',
+          'semestre': 1,
+          'intereses': 'Sin definir',
+          'disponibilidad': 'Por definir',
+        });
+      } else if (claseFormateada == 'Tutor') {
+        await Supabase.instance.client.from('profesores').insert({
+          'id': userId, // Debe ser el mismo id que en usuarios
+          'especialidad': 'Sin definir',
+          'carrera_profesion': 'Ninguna',
+          'horario': 'Por definir',
+          'experiencia': 'Sin definir',
+        });
       }
+
+      _snack('Registro exitoso. ¡Bienvenido/a!');
+      navigate(context, CustomPages.loginPage);
+    } on AuthException catch (e) {
+      String mensaje = e.message;
+      if (mensaje.contains('User already registered')) {
+        mensaje = 'El usuario ya está registrado';
+      } else if (mensaje.contains('Invalid email')) {
+        mensaje = 'Correo electrónico no válido';
+      } else if (mensaje.contains('Weak password')) {
+        mensaje = 'La contraseña es demasiado débil';
+      }
+      _snack(mensaje);
     } catch (e) {
-      String error = e.toString();
-      if (error.contains('User already registered')) {
-        _snack('El usuario ya está registrado');
-      } else if (error.contains('Invalid email')) {
-        _snack('Correo electrónico no válido');
-      } else {
-        _snack('Ocurrió un error inesperado: $error');
-      }
+      _snack('Ocurrió un error inesperado: $e');
+    }
+  }
+
+  Future<void> _registrarUsuario() async {
+    final email = _correoController.text.trim().toLowerCase();
+    final password = _contrasenaController.text;
+
+    // Comprobación previa: ¿el correo ya existe?
+    final response = await Supabase.instance.client
+        .from('auth.users')
+        .select('id')
+        .eq('email', email)
+        .maybeSingle();
+
+    if (response != null) {
+      // El correo ya está registrado
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('Correo ya registrado'),
+          content: Text('Este correo ya está en uso. Por favor, usa otro.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Aceptar'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Si no existe, procede con el registro
+    try {
+      await Supabase.instance.client.auth.signUp(
+        email: email,
+        password: password,
+      );
+      // Muestra mensaje de éxito y pide confirmar el correo
+    } on AuthException catch (e) {
+      // Maneja otros errores de registro
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text('Error al registrar'),
+          content: Text(e.message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Aceptar'),
+            ),
+          ],
+        ),
+      );
     }
   }
 

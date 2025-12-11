@@ -16,6 +16,7 @@ import 'package:my_app/src/pages/Soporte/soporte_page.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 
 import 'package:my_app/src/BackEnd/custom/refrescar.dart';
 import 'package:my_app/src/BackEnd/custom/library.dart';
@@ -118,24 +119,114 @@ class _PerfilPageState extends State<PerfilPage> {
   }
 
   Future<void> _logout() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await Supabase.instance.client.auth.signOut();
-      await prefs.clear();
+    await Supabase.instance.client.auth.signOut();
 
-      if (mounted) {
-        Navigator.pushNamedAndRemoveUntil(
-          context,
-          navigate(context, CustomPages.loginPage),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sesión cerrada, ¡vuelve pronto!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      // Redirige al login o splash
+      navigate(context, CustomPages.loginPage, finishCurrent: true);
+    }
+  }
+
+  Future<void> _cambiarContrasena(BuildContext context) async {
+    final currentPasswordController = TextEditingController();
+    final newPasswordController = TextEditingController();
+    final confirmNewPasswordController = TextEditingController();
+
+    final confirmado = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cambiar contraseña'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: currentPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Contraseña actual',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: newPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Nueva contraseña',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: confirmNewPasswordController,
+              obscureText: true,
+              decoration: const InputDecoration(
+                labelText: 'Confirmar nueva contraseña',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Cambiar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmado != true) return;
+
+    if (newPasswordController.text != confirmNewPasswordController.text) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Las contraseñas nuevas no coinciden')),
+      );
+      return;
+    }
+
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      // Verifica la contraseña actual
+      final response = await Supabase.instance.client.auth.signInWithPassword(
+        email: user.email!,
+        password: currentPasswordController.text,
+      );
+      if (response.user == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al cerrar sesión: $e')),
+          const SnackBar(content: Text('Contraseña actual incorrecta')),
         );
+        return;
       }
+
+      // Cambia la contraseña
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(password: newPasswordController.text),
+      );
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Contraseña cambiada exitosamente')),
+      );
+    } on TimeoutException {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error de red o tiempo de espera. Intenta nuevamente.')),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo cambiar la contraseña. Verifica tu conexión o intenta más tarde.')),
+      );
     }
   }
 
@@ -334,7 +425,7 @@ class _PerfilPageState extends State<PerfilPage> {
                   text: "Cambiar contraseña",
                   color1: const Color.fromARGB(255, 56, 20, 20),
                   color2: const Color.fromARGB(255, 100, 6, 6),
-                  onTap: () {},
+                  onTap: () => _cambiarContrasena(context),
                 ),
                 _PerfilButton(
                   icon: Icons.logout,

@@ -154,79 +154,85 @@ class _MisCalificacionesPageState extends State<MisCalificacionesPage> with Tick
 
   Widget _buildEmptyState() {
     return Center(
-      child: FadeTransition(
-        opacity: _fadeAnimation,
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(40),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Constants.colorBackground.withOpacity(0.15),
-                      Constants.colorBackground.withOpacity(0.05),
+      child: SingleChildScrollView(
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32.0, vertical: 64.0), // <-- Aumenta el vertical
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(40),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Constants.colorBackground.withOpacity(0.15),
+                        Constants.colorBackground.withOpacity(0.05),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(30),
+                  ),
+                  child: Icon(
+                    Icons.star_border_rounded,
+                    size: 80,
+                    color: Constants.colorBackground.withOpacity(0.7),
+                  ),
+                ),
+                const SizedBox(height: 32),
+                Text(
+                  '¡Aún no has calificado!',
+                  style: Constants.textStyleBLANCOTitle.copyWith(fontSize: 24),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Después de completar reuniones con tutores\npodrás calificar tu experiencia aquí',
+                  style: Constants.textStyleBLANCO.copyWith(
+                    fontSize: 16,
+                    color: Constants.colorBackground.withOpacity(0.8),
+                    height: 1.5,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 32),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Constants.colorAccent.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: Constants.colorAccent.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.lightbulb_outline_rounded,
+                        color: Constants.colorAccent,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          'Tus calificaciones ayudan a otros estudiantes',
+                          style: Constants.textStyleBLANCOSmall.copyWith(
+                            color: Constants.colorAccent,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          overflow: TextOverflow.visible,
+                          softWrap: true,
+                        ),
+                      ),
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(30),
                 ),
-                child: Icon(
-                  Icons.star_border_rounded,
-                  size: 80,
-                  color: Constants.colorBackground.withOpacity(0.7),
-                ),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                '¡Aún no has calificado!',
-                style: Constants.textStyleBLANCOTitle.copyWith(fontSize: 24),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Después de completar reuniones con tutores\npodrás calificar tu experiencia aquí',
-                style: Constants.textStyleBLANCO.copyWith(
-                  fontSize: 16,
-                  color: Constants.colorBackground.withOpacity(0.8),
-                  height: 1.5,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Constants.colorAccent.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Constants.colorAccent.withOpacity(0.3),
-                    width: 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.lightbulb_outline_rounded,
-                      color: Constants.colorAccent,
-                      size: 20,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Tus calificaciones ayudan a otros estudiantes',
-                      style: Constants.textStyleBLANCOSmall.copyWith(
-                        color: Constants.colorAccent,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

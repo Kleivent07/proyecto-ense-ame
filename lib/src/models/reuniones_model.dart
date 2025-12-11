@@ -88,6 +88,8 @@ class MeetingModel {
   }) async {
     return await _executeWithRetry(() async {
       try {
+        debugPrint('Usuario actual: ${Supabase.instance.client.auth.currentUser?.id}');
+        debugPrint('Sesión actual: ${Supabase.instance.client.auth.currentSession}');
         debugPrint('DEBUG createMeeting currentUser id = ${_client.auth.currentUser?.id}');
         final currentUserId = tutorId ?? _client.auth.currentUser?.id;
 

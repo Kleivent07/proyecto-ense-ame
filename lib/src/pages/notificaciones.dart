@@ -11,8 +11,12 @@ class NotificacionesPage extends StatefulWidget {
   static Future<int> obtenerCantidadNoLeidas() async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null) return 0;
-    final notis = await NotificationsService.getUserNotifications(userId);
-    return notis.where((n) => n['leida'] != true).length;
+    final data = await Supabase.instance.client
+        .from('notificaciones')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('leida', false);
+    return data.length;
   }
 
   @override

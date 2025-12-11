@@ -46,14 +46,51 @@ class _LoginPageState extends State<LoginPage> {
       // Espera a que currentUser esté disponible
       await Future.delayed(const Duration(milliseconds: 200));
       final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) {
-        debugPrint('[LOGIN] currentUser aún es null, reintentando obtener usuario...');
+      final isConfirmed = user?.emailConfirmedAt != null;
+
+      if (!isConfirmed) {
+        // Mostrar alerta y bloquear acción
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: Text('Correo no confirmado'),
+            content: Text('Debes confirmar tu correo antes de usar esta función. Revisa tu bandeja de entrada y haz clic en el enlace de confirmación.'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Aceptar'),
+              ),
+            ],
+          ),
+        );
+        return; // Bloquea la acción
       }
 
       // Si el widget se desmontó (por ejemplo, navegación automática), corta aquí
       if (!mounted) return;
 
       await usuarioService.login(email, password);
+
+      // Después de login exitoso
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId != null) {
+        final perfil = await Supabase.instance.client
+            .from('usuarios')
+            .select('id')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (perfil == null) {
+          await Supabase.instance.client.from('usuarios').insert({
+            'id': userId,
+            'nombre': '', // El usuario podrá editar esto después
+            'apellido': '',
+            'email': email, // Usa el email del login
+            'fecha_nacimiento': null,
+            'clase': '', // O puedes poner 'Estudiante'/'Tutor' si tienes el dato
+          });
+        }
+      }
 
       final perfil = await usuarioService.obtenerPerfil();
       final esTutor = (perfil?['clase'] == 'Tutor');
